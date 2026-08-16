@@ -982,6 +982,90 @@ class WaMessageQueue(models.Model):
                 renamed += 1
         return renamed
 
+    def action_sync_all_chats_and_contacts(self):
+        """بيجيب كل جهات الاتصال (Evolution POST /chat/findContacts/{instance})
+        وكل المحادثات (POST /chat/findChats/{instance}) من السيرفر، ويستوردهم
+        لأودو مرة واحدة - مفيدة بعد ربط جهاز جديد عشان المحادثات القديمة تظهر
+        فورًا من غير ما نستنى رسالة جديدة توصل لكل واحد فيهم.
+
+        - كل contact بيتحول partner (حتى لو معهوش أي رسالة أبدًا).
+        - كل chat بيتجاب التاريخ بتاعه عن طريق sync_history_from_whatsapp()
+          الموجودة بالفعل.
+
+        Best-effort بالكامل: أي contact/chat واحد يفشل معالجته (شبكة، بيانات
+        ناقصة، إلخ) بيتخطى ويكمل على الباقي، ومبيوقفش العملية كلها. بيرجع
+        dict فيه عدد كل حاجة اتعملها: {'contacts': n, 'chats': n, 'messages': n}."""
+        self = self.sudo()
+        account = self.get_account()
+        if not (account.server_url and account.instance_name and account.api_key):
+            raise ValidationError(_("Please fill in the Server URL, Instance Name and API Key first."))
+        config = self.get_config()
+        headers = self._evo_headers(config)
+
+        def _is_skippable_jid(jid):
+            return (not jid) or jid.endswith('@broadcast') or jid == 'status@broadcast'
+
+        # ------------------------------------------------------------
+        # 1) Contacts -> res.partner (even with zero messages so far)
+        # ------------------------------------------------------------
+        contacts_imported = 0
+        try:
+            contacts_url = self._evo_url(config, "chat/findContacts/%s" % config['instance_name'])
+            response = requests.post(contacts_url, json={}, headers=headers, timeout=30)
+            contacts_data = response.json() if response.content else []
+        except (requests.RequestException, ValueError):
+            contacts_data = []
+        if config.get('developer_mode'):
+            _logger.info("WhatsApp findContacts response=%s", contacts_data)
+        if isinstance(contacts_data, list):
+            for contact in contacts_data:
+                jid = contact.get('id') or contact.get('remoteJid') or contact.get('jid')
+                if _is_skippable_jid(jid) or '@g.us' in jid:
+                    # Groups are handled through the chats loop below (and
+                    # sync_all_wa_group_names for renaming) - a group isn't
+                    # a "contact" with its own phone number.
+                    continue
+                push_name = contact.get('pushName') or contact.get('name') or contact.get('notify')
+                phone_number = self.normalize_phone(jid, account.default_country_code)
+                if not phone_number:
+                    continue
+                try:
+                    self.with_context(
+                        wa_push_name=push_name, wa_remote_jid=jid
+                    )._get_or_create_wa_partner(phone_number)
+                    contacts_imported += 1
+                except Exception:
+                    _logger.exception("Failed importing WhatsApp contact %s", jid)
+
+        # ------------------------------------------------------------
+        # 2) Chats -> message history via the existing per-number importer
+        # ------------------------------------------------------------
+        chats_imported = 0
+        messages_imported = 0
+        try:
+            chats_url = self._evo_url(config, "chat/findChats/%s" % config['instance_name'])
+            response = requests.post(chats_url, json={}, headers=headers, timeout=30)
+            chats_data = response.json() if response.content else []
+        except (requests.RequestException, ValueError):
+            chats_data = []
+        if config.get('developer_mode'):
+            _logger.info("WhatsApp findChats response=%s", chats_data)
+        if isinstance(chats_data, list):
+            for chat in chats_data:
+                jid = chat.get('id') or chat.get('remoteJid') or chat.get('jid')
+                if _is_skippable_jid(jid):
+                    continue
+                phone_number = self.normalize_phone(jid, account.default_country_code)
+                if not phone_number:
+                    continue
+                chats_imported += 1
+                try:
+                    messages_imported += self.sync_history_from_whatsapp(phone_number, limit=100)
+                except Exception:
+                    _logger.exception("Failed importing WhatsApp chat history for %s", jid)
+
+        return {'contacts': contacts_imported, 'chats': chats_imported, 'messages': messages_imported}
+
     def get_config(self):
         """Returns a plain dict snapshot of the current whatsapp.account's
         Evolution API credentials (server_url/instance_name/api_key/...) -
@@ -1263,7 +1347,17 @@ class WaMessageQueue(models.Model):
         url = self._evo_url(config, "message/sendReaction/%s" % config['instance_name'])
         headers = self._evo_headers(config)
         jid = self.normalize_phone(target.phone_number)
-        jid = jid if '@' in jid else "%s@s.whatsapp.net" % jid
+        if '@' not in jid:
+            # target.phone_number is stored without any @-suffix
+            # (normalize_phone strips it on the way in), so it has to be
+            # reconstructed here. Hardcoding "@s.whatsapp.net" unconditionally
+            # was wrong for a group message: WhatsApp group JIDs are 18-20
+            # digits and MUST end in "@g.us" or Evolution/Baileys rejects
+            # the reaction (sender not found in that "individual" chat) -
+            # this is why reacting inside a group conversation was failing.
+            # wa_is_group on the message itself is the source of truth
+            # rather than re-guessing from digit length here.
+            jid = "%s@g.us" % jid if target.wa_is_group else "%s@s.whatsapp.net" % jid
         payload = {
             "key": {
                 "remoteJid": jid,

@@ -211,6 +211,27 @@ class WhatsappAccount(models.Model):
             }
         }
 
+    def action_import_all_chats_and_contacts(self):
+        """بيجيب كل جهات الاتصال وكل المحادثات (بتاريخها) من Evolution API
+        دفعة واحدة، عن طريق wa.message.action_sync_all_chats_and_contacts().
+        مفيدة أول ما تربط جهاز جديد عشان المحادثات القديمة تظهر فورًا في
+        أودو من غير ما تستنى رسالة جديدة توصل لكل واحد فيهم."""
+        self.ensure_one()
+        if not self.server_url or not self.instance_name or not self.api_key:
+            raise ValidationError(_("Please fill in the Server URL, Instance Name and API Key first."))
+        result = self.env['wa.message'].sudo().action_sync_all_chats_and_contacts()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _("Import Finished"),
+                'message': _("%s contact(s) imported, %s chat(s) found, %s message(s) imported.") % (
+                    result.get('contacts', 0), result.get('chats', 0), result.get('messages', 0)),
+                'type': 'success',
+                'sticky': True,
+            }
+        }
+
     def action_open_connect_wizard(self):
         """Opens the 'Scan to link' popup (see wa_account_connect_wizard.py)."""
         self.ensure_one()

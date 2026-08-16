@@ -74,27 +74,40 @@ export class WhatsappFullView extends Component {
 
     // ------------------------------------------------------------------
     async _checkStatus() {
-        const result = await rpc("/whatsapp/fullview/status", {});
-        this.state.connectionState = result.connection_state;
-        this.state.statusError = result.error || false;
-        if (result.connection_state === "open") {
-            if (this.state.phase !== "chat") {
-                this.state.phase = "chat";
-                clearInterval(this._statusTimer);
-                await this._loadConversations();
-                this._convTimer = setInterval(() => this._loadConversations(), 6000);
+        try {
+            const result = await rpc("/whatsapp/fullview/status", {});
+            this.state.connectionState = result.connection_state;
+            this.state.statusError = result.error || false;
+            if (result.connection_state === "open") {
+                if (this.state.phase !== "chat") {
+                    this.state.phase = "chat";
+                    clearInterval(this._statusTimer);
+                    await this._loadConversations();
+                    this._convTimer = setInterval(() => this._loadConversations(), 6000);
+                }
+            } else {
+                this.state.phase = "qr";
+                this.state.qrImage = result.qr_image || false;
+                this.state.pairingCode = result.pairing_code || false;
             }
-        } else {
-            this.state.phase = "qr";
-            this.state.qrImage = result.qr_image || false;
-            this.state.pairingCode = result.pairing_code || false;
+        } catch (e) {
+            // Background poll - never let a transient failure (e.g. a
+            // momentary DB connection pool spike) surface as the generic
+            // Odoo "Server Error" toast every few seconds. Log it so it's
+            // still diagnosable in the console, and just retry on the
+            // next tick.
+            console.warn("WhatsApp fullview: status check failed, will retry", e);
         }
     }
 
     // ------------------------------------------------------------------
     async _loadConversations() {
-        const conversations = await rpc("/whatsapp/fullview/conversations", {});
-        this.state.conversations = conversations;
+        try {
+            const conversations = await rpc("/whatsapp/fullview/conversations", {});
+            this.state.conversations = conversations;
+        } catch (e) {
+            console.warn("WhatsApp fullview: failed to load conversations, will retry", e);
+        }
     }
 
     get filteredConversations() {
@@ -199,7 +212,11 @@ export class WhatsappFullView extends Component {
         this.closeForwardPanel();
         clearInterval(this._msgTimer);
         await this._loadMessages(true);
-        await rpc("/whatsapp/fullview/mark_read", { phone_number: conv.phone_number });
+        try {
+            await rpc("/whatsapp/fullview/mark_read", { phone_number: conv.phone_number });
+        } catch (e) {
+            console.warn("WhatsApp fullview: failed to mark conversation as read", e);
+        }
         conv.unread_count = 0;
         this._msgTimer = setInterval(() => this._loadMessages(false), 3000);
     }
@@ -214,16 +231,22 @@ export class WhatsappFullView extends Component {
         // not just the last one shown, or new messages can be missed.
         const afterId = (!reset && this.state.messages.length) ?
             Math.max(...this.state.messages.map((m) => m.id)) : 0;
-        const messages = await rpc("/whatsapp/fullview/messages", {
-            phone_number: this.state.selectedPhone,
-            after_id: reset ? 0 : afterId,
-        });
-        if (reset) {
-            this.state.messages = messages;
-        } else if (messages.length) {
-            this.state.messages = this.state.messages.concat(messages);
+        try {
+            const messages = await rpc("/whatsapp/fullview/messages", {
+                phone_number: this.state.selectedPhone,
+                after_id: reset ? 0 : afterId,
+            });
+            if (reset) {
+                this.state.messages = messages;
+            } else if (messages.length) {
+                this.state.messages = this.state.messages.concat(messages);
+            }
+            this._scrollToEnd();
+        } catch (e) {
+            // Recurring 3s poll - same reasoning as _checkStatus/_loadConversations:
+            // don't spam the user with a toast for every transient hiccup.
+            console.warn("WhatsApp fullview: failed to load messages, will retry", e);
         }
-        this._scrollToEnd();
     }
 
     // بتحمّل أقدم رسايل قبل أول واحدة ظاهرة دلوقتي. لو مفيش حاجة تانية
