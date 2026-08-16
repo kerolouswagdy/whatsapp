@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+<t t-name="whatsapp_fullview.WhatsappFullView" owl="1">
+    <div class="o_whatsapp_fullview" dir="rtl">
+
+        <!-- ============== QR SCREEN ============== -->
+        <div t-if="state.phase !== 'chat'" class="o_wa_qr_screen">
+            <div class="o_wa_qr_card">
+                <div class="o_wa_qr_header">
+                    <span class="o_wa_logo">WhatsApp</span>
+                </div>
+                <t t-if="state.phase === 'loading'">
+                    <p class="o_wa_qr_loading">جاري التحميل...</p>
+                </t>
+                <t t-else="">
+                    <t t-if="state.qrImage">
+                        <img class="o_wa_qr_image" t-attf-src="data:image/png;base64,{{state.qrImage}}"/>
+                        <p class="o_wa_qr_instructions">
+                            افتح واتساب على تليفونك ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز، وامسح الكود ده
+                        </p>
+                        <p t-if="state.pairingCode" class="o_wa_pairing_code">
+                            كود الربط: <b t-esc="state.pairingCode"/>
+                        </p>
+                    </t>
+                    <t t-else="">
+                        <p class="o_wa_qr_instructions">
+                            في انتظار كود الـ QR (الحالة: <t t-esc="state.connectionState"/>)...
+                        </p>
+                    </t>
+                </t>
+            </div>
+        </div>
+
+        <!-- ============== CHAT SCREEN ============== -->
+        <div t-if="state.phase === 'chat'" class="o_wa_chat_layout">
+
+            <!-- Sidebar: conversation list -->
+            <div class="o_wa_sidebar">
+                <div class="o_wa_sidebar_header">
+                    <span class="o_wa_logo">WhatsApp</span>
+                </div>
+                <div class="o_wa_search_box">
+                    <input type="text" placeholder="البحث عن محادثة أو بدء محادثة جديدة"
+                           t-model="state.search"/>
+                </div>
+                <div class="o_wa_filter_tabs">
+                    <span class="o_wa_filter_tab" t-att-class="{ 'o_wa_filter_active': state.activeTab === 'all' }"
+                          t-on-click="() => this.setActiveTab('all')">الكل</span>
+                    <span class="o_wa_filter_tab" t-att-class="{ 'o_wa_filter_active': state.activeTab === 'unread' }"
+                          t-on-click="() => this.setActiveTab('unread')">غير مقروءة</span>
+                    <span class="o_wa_filter_tab" t-att-class="{ 'o_wa_filter_active': state.activeTab === 'favorites' }"
+                          t-on-click="() => this.setActiveTab('favorites')">المفضلة</span>
+                    <span class="o_wa_filter_tab" t-att-class="{ 'o_wa_filter_active': state.activeTab === 'groups' }"
+                          t-on-click="() => this.setActiveTab('groups')">الجروبات</span>
+                </div>
+                <div class="o_wa_conversation_list">
+                    <t t-if="!filteredConversations.length">
+                        <div class="o_wa_empty_list">مفيش محادثات لسه</div>
+                    </t>
+                    <div t-foreach="filteredConversations" t-as="conv" t-key="conv.phone_number"
+                         class="o_wa_conversation_item"
+                         t-att-class="{ 'o_wa_selected': state.selectedPhone === conv.phone_number }"
+                         t-on-click="() => this.selectConversation(conv)">
+                        <div class="o_wa_avatar" t-esc="initials(conv.contact_name)"/>
+                        <div class="o_wa_conv_info">
+                            <div class="o_wa_conv_top_row">
+                                <span class="o_wa_conv_name">
+                                    <span t-if="conv.is_group" class="o_wa_group_icon" title="جروب">👥</span>
+                                    <t t-esc="conv.contact_name"/>
+                                </span>
+                                <span class="o_wa_conv_date" t-esc="formatDate(conv.last_date)"/>
+                            </div>
+                            <div class="o_wa_conv_bottom_row">
+                                <span class="o_wa_conv_snippet" t-esc="conv.last_message"/>
+                                <span t-if="conv.unread_count" class="o_wa_unread_badge"
+                                      t-esc="conv.unread_count"/>
+                            </div>
+                        </div>
+                        <span class="o_wa_favorite_star" t-att-class="{ 'o_wa_favorite_active': conv.is_favorite }"
+                              title="مفضلة" t-on-click="(ev) => this.toggleFavorite(conv, ev)">
+                            <t t-if="conv.is_favorite">★</t>
+                            <t t-else="">☆</t>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thread -->
+            <div class="o_wa_thread">
+                <t t-if="!state.selectedPhone">
+                    <div class="o_wa_no_selection">اختر محادثة من القائمة لعرض الرسائل</div>
+                </t>
+                <t t-else="">
+                    <div class="o_wa_thread_header">
+                        <div class="o_wa_avatar" t-esc="initials(state.selectedName)"/>
+                        <div class="o_wa_thread_title">
+                            <div class="o_wa_thread_name" t-esc="state.selectedName || state.selectedPhone"/>
+                            <div class="o_wa_thread_phone" t-esc="state.selectedPhone"/>
+                        </div>
+                    </div>
+                    <div class="o_wa_messages" t-ref="messagesEnd">
+                        <div class="o_wa_load_older">
+                            <button t-if="!state.noMoreOlder" type="button" class="o_wa_load_older_btn"
+                                    t-att-disabled="state.loadingOlder"
+                                    t-on-click="loadOlderMessages">
+                                <t t-if="state.loadingOlder">جاري التحميل...</t>
+                                <t t-else="">تحميل رسائل أقدم</t>
+                            </button>
+                            <span t-else="" class="o_wa_no_more_older">مفيش رسائل أقدم</span>
+                        </div>
+                        <div t-foreach="state.messages" t-as="msg" t-key="msg.id"
+                             class="o_wa_bubble_row"
+                             t-att-class="{ 'o_wa_out': msg.from_me, 'o_wa_in': !msg.from_me }">
+                            <div class="o_wa_bubble" t-on-click="(ev) => this.onBubbleClick(msg, ev)">
+                                <img t-if="msg.has_media and msg.media_type === 'image' and !state.failedImageIds.includes(msg.id)"
+                                     class="o_wa_bubble_media_image" t-att-src="mediaUrl(msg)"
+                                     t-on-error="() => this.onImageError(msg.id)"/>
+                                <a t-elif="msg.has_media" class="o_wa_bubble_media_file"
+                                   t-att-href="mediaUrl(msg)" target="_blank">
+                                    <span class="o_wa_file_icon" t-esc="fileIcon(msg.media_type)"/>
+                                    <span class="o_wa_file_name" t-esc="msg.media_filename or 'ملف مرفق'"/>
+                                </a>
+                                <span t-if="msg.body" t-esc="msg.body"/>
+                                <span class="o_wa_bubble_time" t-esc="formatDate(msg.date)"/>
+                                <div t-if="msg.reactions and msg.reactions.length" class="o_wa_reactions_badge">
+                                    <span t-foreach="msg.reactions" t-as="r" t-key="r.emoji"
+                                          class="o_wa_reaction_pill" t-att-class="{ 'o_wa_reaction_mine': r.from_me }"
+                                          t-att-title="r.from_me ? 'دوس تاني تشيل تفاعلك' : ''"
+                                          t-on-click="(ev) => r.from_me ? this.removeMyReaction(msg, ev) : null">
+                                        <t t-esc="r.emoji"/><t t-if="r.count > 1"> <t t-esc="r.count"/></t>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ============== ACTION MENU: React / Forward / Copy / Delete ============== -->
+                    <div t-if="state.actionMenu.open and actionMenuMessage" class="o_wa_action_menu"
+                         t-att-style="'top:' + state.actionMenu.top + 'px; left:' + state.actionMenu.left + 'px;'">
+                        <div class="o_wa_quick_reactions">
+                            <span t-foreach="quickReactions" t-as="emoji" t-key="emoji"
+                                  class="o_wa_quick_reaction" t-on-click="() => this.pickReaction(emoji)"
+                                  t-esc="emoji"/>
+                        </div>
+                        <div class="o_wa_action_menu_items">
+                            <div class="o_wa_action_menu_item" t-on-click="openForwardPanel">
+                                <span class="o_wa_action_icon">↪️</span> تحويل (Forward)
+                            </div>
+                            <div t-if="actionMenuMessage.body" class="o_wa_action_menu_item" t-on-click="copyMessage">
+                                <span class="o_wa_action_icon">📋</span> نسخ
+                            </div>
+                            <div class="o_wa_action_menu_item o_wa_action_danger" t-on-click="deleteLocally">
+                                <span class="o_wa_action_icon">🗑️</span> حذف عندي بس
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ============== FORWARD PANEL ============== -->
+                    <div t-if="state.forwardPanel.open" class="o_wa_forward_panel">
+                        <div class="o_wa_forward_header">تحويل الرسالة إلى...</div>
+                        <div class="o_wa_forward_list">
+                            <div t-foreach="forwardableConversations" t-as="conv" t-key="conv.phone_number"
+                                 class="o_wa_forward_item" t-on-click="() => this.forwardTo(conv.phone_number)">
+                                <div class="o_wa_avatar o_wa_avatar_sm" t-esc="initials(conv.contact_name)"/>
+                                <span t-esc="conv.contact_name"/>
+                            </div>
+                        </div>
+                        <form class="o_wa_forward_manual" t-on-submit="onForwardManualSubmit">
+                            <input type="text" placeholder="أو اكتب رقم تليفون..."
+                                   t-model="state.forwardPanel.phone"/>
+                            <button type="submit">تحويل</button>
+                        </form>
+                    </div>
+
+                    <form class="o_wa_composer" t-on-submit="sendMessage">
+                        <input type="file" t-ref="fileInput" class="o_wa_file_input"
+                               t-on-change="onFileChange"/>
+                        <button type="button" class="o_wa_attach_btn" title="إرفاق صورة أو ملف"
+                                t-on-click="onAttachClick">📎</button>
+                        <div class="o_wa_composer_main">
+                            <div t-if="state.attachment" class="o_wa_attachment_preview">
+                                <img t-if="state.attachmentPreviewUrl" t-att-src="state.attachmentPreviewUrl"/>
+                                <span t-else="" class="o_wa_attachment_filename" t-esc="state.attachment.name"/>
+                                <button type="button" class="o_wa_attachment_remove"
+                                        t-on-click="clearAttachment">✕</button>
+                            </div>
+                            <input type="text" placeholder="اكتب رسالة أو الصق لينك..."
+                                   t-model="state.draft" t-on-keydown="onDraftKeydown"/>
+                        </div>
+                        <button type="submit" t-att-disabled="state.sending">إرسال</button>
+                    </form>
+                </t>
+            </div>
+        </div>
+    </div>
+</t>
+
+</templates>

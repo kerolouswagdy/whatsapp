@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+  <record id="res_config_settings_view_form_whatsapp" model="ir.ui.view">
+    <field name="name">res.config.settings.view.form.inherit.whatsapp</field>
+    <field name="inherit_id" ref="base.res_config_settings_view_form" />
+    <field name="model">res.config.settings</field>
+    <field name="priority" eval="100" />
+    <field name="arch" type="xml">
+        <xpath expr="//form" position="inside">
+            <app data-string="whatsapp" string="WhatsApp" name="odoo_whatsapp_api" id="odoo_whatsapp_api">
+                <div class="app_settings_block" data-string="whatsapp" string="WhatsApp" data-key="odoo_whatsapp_api" >
+                    <h2>WhatsApp Business Accounts</h2>
+                    <br/>
+                    <div class="row mt16 o_settings_container">
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_right_pane">
+                                <div class="text-muted">
+                                    Connection credentials (Phone Number ID, Access Token, Webhook, ...) now live
+                                    on WhatsApp Business Account records, one per WABA.
+                                </div>
+                                <div class="content-group">
+                                    <button name="%(action_whatsapp_account)d" type="action"
+                                            string="Manage WhatsApp Accounts" class="btn-link" icon="fa-arrow-right"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <h2>Website Widget</h2>
+                    <br/>
+                    <div class="row mt16 o_settings_container" name="whatsapp_widget_setting_container">
+                        <div class="col-12 col-lg-6 o_setting_box" id="whatsapp_widget_number">
+                            <div class="o_setting_right_pane" id="whatsapp_widget_number_pane">
+                                <label for="whatsapp_number"/>
+                                <div class="text-muted">
+                                    Public number shown on the website WhatsApp click-to-chat widget (digits with country code, no + or spaces)
+                                </div>
+                                <div class="content-group" id="whatsapp_widget_number_content">
+                                    <field name="whatsapp_number"/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-6 o_setting_box" id="whatsapp_widget_message">
+                            <div class="o_setting_right_pane" id="whatsapp_widget_message_pane">
+                                <label for="whatsapp_message"/>
+                                <div class="text-muted">
+                                    Default pre-filled message when a visitor starts a chat from the website widget
+                                </div>
+                                <div class="content-group" id="whatsapp_widget_message_content">
+                                    <field name="whatsapp_message"/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-6 o_setting_box" id="whatsapp_default_operators">
+                            <div class="o_setting_right_pane" id="whatsapp_settings_default_operators">
+                                <label for="wa_default_operator_ids"/>
+                                <div class="text-muted">
+                                    Fallback users added to the Discuss group chat for WhatsApp conversations that have
+                                    no per-model or per-account operators configured
+                                </div>
+                                <div class="content-group" id="whatsapp_settings_default_operators_content">
+                                    <field name="wa_default_operator_ids" widget="many2many_tags"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </app>
+        </xpath>
+    </field>
+  </record>
+
+</odoo>

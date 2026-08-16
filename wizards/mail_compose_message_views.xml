@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record model="ir.ui.view" id="email_compose_message_wizard_whatsapp">
+        <field name="name">mail.compose.message.form.whatsapp</field>
+        <field name="model">mail.compose.message</field>
+        <field name="inherit_id" ref="mail.email_compose_message_wizard_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='subject']//.." position="before">
+                <group>
+                    <field name="whatsapp"/>
+                </group>
+            </xpath>
+            <xpath expr="//field[@name='subject']//.." position="after">
+                <group>
+                    <group>
+                        <field name="whatsapp_number" invisible="not whatsapp"/>
+                    </group>
+                    <group>
+                        <field name="whatsapp_template_id" invisible="not whatsapp"/>
+                    </group>
+                </group>
+                <field name="wa_value_ids" invisible="1" nolabel="1">
+                    <list create="0" delete="0">
+                        <field name="value"/>
+                    </list>
+                </field>
+                <field name="custom_wa_text" nolabel="1" invisible="whatsapp_template_id or not whatsapp"/>
+                <field name="output_wa_text" invisible="not whatsapp_template_id"/>
+                <group invisible="not whatsapp">
+                    <field name="attachment_ids" widget="many2many_binary"
+                           string="Images / Videos / Invoices / Files"/>
+                </group>
+            </xpath>
+            <xpath expr="//field[@name='subject']//.." position="attributes">
+                <attribute name="invisible">whatsapp</attribute>
+            </xpath>
+            <xpath expr="//field[@name='body']" position="attributes">
+                <attribute name="invisible">whatsapp</attribute>
+            </xpath>
+            <xpath expr="//footer[last()]" position="inside">
+                <button string="Abrir WA" class="btn-primary" type="object"
+                        invisible="not whatsapp" name="quick_wa_open"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,36 @@
+# -*- coding: utf-8 -*-
+{
+    'name': 'odoo-whatsapp-api',
+    'summary': "360 Dialog WhatsApp Integration",
+    'description': """Odoo Module to send WhatsApp Messages through 360 Dialog API""",
+    'website': '',
+    "support": "info@chatwithio.com",
+    'category': 'Mail',
+    'version': '19.0.0.1',
+    'depends': ['mail','crm'],
+    'data': [
+        'security/ir.model.access.csv',
+        'data/crm_lead_adaptation.xml',
+        'views/whatsapp_account_views.xml',
+        'views/whatsapp_views.xml',
+        'views/whatsapp_adaptation_model_views.xml',
+        'data/activity_type_data.xml',
+        'views/res_config_settings_view.xml',
+        'views/whatsapp_template_views.xml',
+        'views/mail_template_views.xml',
+        'views/wa_qr_code_views.xml',
+        'wizards/mail_compose_message_views.xml',
+        'wizards/wa_account_connect_wizard_views.xml',
+        'views/whatsapp_full_view_action.xml',
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'odoo_whatsapp_api/static/src/js/whatsapp_full_view.js',
+            'odoo_whatsapp_api/static/src/xml/whatsapp_full_view.xml',
+            'odoo_whatsapp_api/static/src/scss/whatsapp_full_view.scss',
+        ],
+    },
+    'license': "OPL-1",
+    'auto_install': False,
+    'installable': True,
+}

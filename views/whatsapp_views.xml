@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="wa_webhook_message_tree_view" model="ir.ui.view">
+        <field name="name">wa.webhook.message.tree.view</field>
+        <field name="model">wa.webhook.messages</field>
+        <field name="priority" eval="1"/>
+        <field name="arch" type="xml">
+            <list string="WhatsApp WebHook Messages" sample="1" >
+                <field name="create_date" optional="show"/>
+                <field name="json_content" optional="show"/>
+            </list>
+        </field>
+    </record>
+    <record id="whatsapp_webhook_messages" model="ir.actions.act_window">
+        <field name="name">Webhook Log</field>
+        <field name="res_model">wa.webhook.messages</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_empty_folder">
+                No data yet !
+            </p>
+        </field>
+    </record>
+
+    <record id="wa_message_tree_view" model="ir.ui.view">
+        <field name="name">wa.message.tree.view</field>
+        <field name="model">wa.message</field>
+        <field name="priority" eval="1"/>
+        <field name="arch" type="xml">
+            <list string="WhatsApp Messages" sample="1" >
+                <field name="create_date" string="Created on" optional="show"/>
+                <field name="create_uid" string="Created by" optional="show"/>
+                <field name="phone_number" string="Sent to" optional="show"/>
+                <field name="status" string="State" widget="badge"
+                       decoration-success="status in ('delivered', 'read', 'sent')"
+                       decoration-warning="status == 'in_progress'"
+                       decoration-danger="status == 'failed'"
+                       optional="show"/>
+                <field name="dialog_message_id" optional="hide"/>
+                <field name="res_model" optional="hide"/>
+                <field name="res_id" optional="hide"/>
+                <field name="json_response" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="wa_message_search_view" model="ir.ui.view">
+        <field name="name">wa.message.search.view</field>
+        <field name="model">wa.message</field>
+        <field name="arch" type="xml">
+            <search string="WhatsApp Messages">
+                <field name="phone_number" string="Sent to"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="whatsapp_messages" model="ir.actions.act_window">
+        <field name="name">WhatsApp Messages</field>
+        <field name="res_model">wa.message</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="wa_message_search_view"/>
+        <field name="context">{'search_default_filter_last_week': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No WhatsApp Messages found
+            </p>
+            <p>
+                Monitor all recent outgoing and incoming messages
+            </p>
+        </field>
+    </record>
+
+    <menuitem id='menu_whatsapp' name='WhatsApp' sequence="100" web_icon="odoo_whatsapp_api,static/description/whatsapplogo.jpeg"/>
+    <menuitem id='menu_whatsapp_conversations' name='Conversations' sequence="5" parent="menu_whatsapp" action="mail.action_discuss"/>
+    <menuitem id='menu_whatsapp_templates' name='Templates' sequence="10" parent="menu_whatsapp" action="whatsapp_message_templates"/>
+    <menuitem id='menu_whatsapp_messages' name='Messages' sequence="20" parent="menu_whatsapp" action="whatsapp_messages"/>
+    <menuitem id='menu_whatsapp_conf' name='Configuration' sequence="30" parent="menu_whatsapp"/>
+    <menuitem id='menu_wa_accounts' name='Accounts' sequence="1" action="action_whatsapp_account" parent="menu_whatsapp_conf"/>
+    <menuitem id='menu_whatsapp_received_messages' name='Webhook Log' sequence="50" parent="menu_whatsapp_conf" action="whatsapp_webhook_messages"/>
+</odoo>

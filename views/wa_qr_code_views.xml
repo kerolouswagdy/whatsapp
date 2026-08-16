@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="wa_qr_code_form_view" model="ir.ui.view">
+        <field name="name">wa.qr.code.form.view</field>
+        <field name="model">wa.qr.code</field>
+        <field name="arch" type="xml">
+            <form string="WhatsApp QR Code">
+                <header>
+                    <button name="action_generate" type="object" string="Generate"
+                            class="oe_highlight" invisible="state != 'draft'"/>
+                    <button name="action_refresh" type="object" string="Refresh"
+                            invisible="state == 'draft'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,generated"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. &quot;Storefront Flyer&quot;"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="account_id" options="{'no_create': True}"/>
+                            <field name="prefilled_message"/>
+                        </group>
+                        <group invisible="state == 'draft'">
+                            <field name="deep_link_url" readonly="1" widget="url"/>
+                        </group>
+                    </group>
+                    <group invisible="not qr_image">
+                        <field name="qr_image" widget="image" class="oe_avatar" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="wa_qr_code_list_view" model="ir.ui.view">
+        <field name="name">wa.qr.code.list.view</field>
+        <field name="model">wa.qr.code</field>
+        <field name="arch" type="xml">
+            <list string="WhatsApp QR Codes">
+                <field name="name"/>
+                <field name="account_id"/>
+                <field name="prefilled_message" optional="hide"/>
+                <field name="deep_link_url" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'generated'"
+                       decoration-danger="state == 'error'"
+                       decoration-muted="state == 'draft'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_wa_qr_code" model="ir.actions.act_window">
+        <field name="name">QR Codes</field>
+        <field name="res_model">wa.qr.code</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a WhatsApp QR Code
+            </p>
+            <p>
+                Generate a scannable code that opens a WhatsApp conversation on your
+                business number with a pre-filled message - great for flyers, storefronts
+                or business cards. Generated locally as a wa.me link, no external API call.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_whatsapp_qr_codes" name="QR Codes" sequence="15"
+              parent="menu_whatsapp" action="action_wa_qr_code"/>
+</odoo>

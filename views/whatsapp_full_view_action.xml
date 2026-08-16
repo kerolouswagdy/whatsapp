@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ir.actions.client اللي بتفتح شاشة الـ OWL. target='current' يعني بتفتح
+         جوه محتوى أودوو زي أي شاشة تانية (مش popup ومش نافذة متصفح منفصلة) -
+         وبتظهر ليها breadcrumb/tab زي باقي شاشات أودوو. -->
+    <record id="action_whatsapp_full_view" model="ir.actions.client">
+        <field name="name">WhatsApp</field>
+        <field name="tag">whatsapp_full_view</field>
+        <field name="target">current</field>
+    </record>
+
+    <!-- menu_whatsapp هو المينيو الجذر الحقيقي بتاع الموديول (معرّف في
+         views/whatsapp_views.xml بنفس الموديول - من غير بادئة اسم موديول
+         لأننا جوه نفس الموديول). حطيناها sequence="6" عشان تظهر بعد
+         "Conversations" (اللي لسه بتفتح Discuss) مباشرة. -->
+    <menuitem id="menu_whatsapp_full_view"
+              name="Chats"
+              parent="menu_whatsapp"
+              action="action_whatsapp_full_view"
+              sequence="6"/>
+
+</odoo>

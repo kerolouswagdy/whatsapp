@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="wa_message_template_tree_view" model="ir.ui.view">
+        <field name="name">wa.message.template.tree.view</field>
+        <field name="model">wa.message.template</field>
+        <field name="priority" eval="1"/>
+        <field name="arch" type="xml">
+            <list string="WhatsApp Templates" sample="1">
+                <field name="name"/>
+                <field name="model_id"/>
+                <field name="create_uid" string="Created by"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'approved'"
+                       decoration-warning="state == 'pending'"
+                       decoration-danger="state == 'rejected'"
+                       decoration-muted="state == 'draft'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="wa_message_template_search_view" model="ir.ui.view">
+        <field name="name">wa.message.template.search.view</field>
+        <field name="model">wa.message.template</field>
+        <field name="arch" type="xml">
+            <search string="WhatsApp Templates">
+                <field name="name"/>
+                <field name="dialog_reference"/>
+                <field name="account_id"/>
+                <filter string="Draft" name="filter_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Pending" name="filter_pending" domain="[('state', '=', 'pending')]"/>
+                <filter string="Approved" name="filter_approved" domain="[('state', '=', 'approved')]"/>
+                <separator/>
+                <filter string="Account" name="group_by_account" context="{'group_by': 'account_id'}"/>
+                <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="wa_message_template_params_form_view" model="ir.ui.view">
+        <field name="name">wa.message.template.params.form.view</field>
+        <field name="model">wa.message.template.params</field>
+        <field name="priority" eval="1"/>
+        <field name="arch" type="xml"><form>
+            <sheet>
+                <group>
+                    <group>
+                        <field name="model_id"  />
+                        <field name="model_name" />
+                        <field name="type" />
+                    </group>
+                    <group>
+                        <field name="field_id" domain="[('model_id','=',model_id)]" invisible="type == 'custom_text'" />
+                        <field name="custom_text" invisible="type != 'custom_text'" />
+                        <field name="not_found_content" invisible="type == 'custom_text'" />
+                    </group>
+                </group>
+            </sheet>
+        </form>
+        </field>
+    </record>
+
+    <record id="wa_message_template_form_view" model="ir.ui.view">
+        <field name="name">wa.message.template.form.view</field>
+        <field name="model">wa.message.template</field>
+        <field name="priority" eval="1"/>
+        <field name="arch" type="xml"><form string="WhatsApp Template">
+            <header>
+                <button name="action_submit_for_approval" type="object" string="Submit" class="oe_highlight" invisible="state != 'draft'"/>
+                <button name="action_set_approved" type="object" string="Approve" class="oe_highlight" invisible="state != 'pending'"/>
+                <button name="action_reset_draft" type="object" string="Reset to Draft" invisible="state == 'draft'"/>
+                <field name="state" widget="statusbar" statusbar_visible="draft,pending,approved"/>
+            </header>
+            <sheet>
+                <div class="oe_button_box" name="button_box">
+                    <button name="action_view_messages" type="object" class="oe_stat_button" icon="fa-envelope-o">
+                        <field name="message_count" widget="statinfo" string="Messages"/>
+                    </button>
+                </div>
+                <widget name="web_ribbon" title="Approved" bg_color="text-bg-success" invisible="state != 'approved'"/>
+
+                <button name="action_preview" type="object" string="Preview" class="oe_link"/>
+                <div class="oe_title">
+                    <label for="name"/>
+                    <h1><field name="name" placeholder="e.g. &quot;Send Order Document&quot;"/></h1>
+                </div>
+                <group>
+                    <group>
+                        <field name="account_id" placeholder="Pick an Account..."/>
+                        <field name="model_id" options="{'no_create':True,'no_create_and_edit':True,'no_open':True,'no_quick_create':True}"/>
+                        <field name="phone_field_id"/>
+                        <field name="category"/>
+                        <field name="user_ids" widget="many2many_tags" placeholder="Accessible to all Users"/>
+                    </group>
+                    <group>
+                        <field name="dialog_reference"/>
+                        <field name="lang_code" string="Language"/>
+                        <field name="header_type"/>
+                        <field name="footer_message"/>
+                        <field name="model_name" invisible="True"/>
+                    </group>
+                </group>
+                <notebook>
+                    <page string="Body" name="body">
+                        <field name="content" placeholder="Hello {{1}}, here is your order with reference {{2}} ..."/>
+                    </page>
+                    <page string="Buttons" name="buttons">
+                        <field name="button_ids">
+                            <list editable="bottom">
+                                <field name="sequence" widget="handle"/>
+                                <field name="button_type"/>
+                                <field name="text"/>
+                                <field name="value"/>
+                            </list>
+                        </field>
+                    </page>
+                    <page string="Variables" name="variables">
+                        <field name="params_ids" mode="list,form" invisible="not model_id">
+                            <list create="1" delete="1" editable="bottom">
+                                <field name="sequence" widget="handle" />
+                                <field name="type"/>
+                                <field name="field_id"/>
+                                <field name="model_name" invisible="1"/>
+                                <field name="custom_text"/>
+                                <field name="not_found_content"/>
+                            </list>
+                        </field>
+                    </page>
+                </notebook>
+            </sheet>
+        </form>
+        </field>
+    </record>
+
+    <record id="whatsapp_message_templates" model="ir.actions.act_window">
+        <field name="name">WhatsApp Template</field>
+        <field name="res_model">wa.message.template</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="wa_message_template_search_view"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a WhatsApp Template
+            </p>
+        </field>
+    </record>
+</odoo>

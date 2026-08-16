@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="whatsapp_account_form_view" model="ir.ui.view">
+        <field name="name">whatsapp.account.form.view</field>
+        <field name="model">whatsapp.account</field>
+        <field name="arch" type="xml">
+            <form string="WhatsApp Business Account">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_templates" type="object" class="oe_stat_button" icon="fa-file-text-o">
+                            <field name="template_count" widget="statinfo" string="Templates"/>
+                        </button>
+                        <button name="action_view_qr_codes" type="object" class="oe_stat_button" icon="fa-qrcode">
+                            <field name="qr_code_count" widget="statinfo" string="QR Codes"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. &quot;Acme Inc. Business Account&quot;"/></h1>
+                    </div>
+
+                    <group>
+                        <group string="Sending Messages">
+                            <field name="server_url" placeholder="e.g. http://localhost:8080"/>
+                            <field name="instance_name" placeholder="e.g. kerolous wagdy"/>
+                            <field name="api_key" password="True" placeholder="e.g. a1f9c3e7b2d84f61e0a5c9d7b3f2e814..."/>
+                            <field name="phone_number" placeholder="e.g. 201553513977"/>
+                        </group>
+                        <group string="Receiving Messages">
+                            <field name="callback_url" readonly="1"/>
+                            <field name="webhook_verify_token"/>
+                        </group>
+                    </group>
+                    <div class="d-flex gap-3 mb-3">
+                        <button name="action_open_connect_wizard" type="object" string="Link Device (Scan QR)" class="btn btn-primary" icon="fa-qrcode"/>
+                        <button name="action_test_credentials" type="object" string="Test Credentials" class="btn btn-secondary" icon="fa-plug"/>
+                        <button name="action_sync_group_names" type="object" string="Sync Group Names" class="btn btn-secondary" icon="fa-users"/>
+                        <button name="action_synchronize_templates" type="object" string="Synchronize Templates" class="btn btn-secondary" icon="fa-refresh"/>
+                        <button name="action_subscribe_webhook" type="object" string="Subscribe Webhook" class="btn btn-secondary" icon="fa-bell"/>
+                    </div>
+
+                    <group string="Auto-Reply">
+                        <group>
+                            <field name="auto_reply_enabled"/>
+                            <field name="auto_reply_template_id"
+                                   invisible="not auto_reply_enabled"
+                                   required="auto_reply_enabled"
+                                   options="{'no_create': True}"/>
+                        </group>
+                        <group>
+                            <div colspan="2" class="text-muted" invisible="not auto_reply_enabled">
+                                Sent automatically to a customer's message until an operator replies
+                                from Odoo, or the phone owner replies directly - whichever comes first.
+                            </div>
+                        </group>
+                    </group>
+
+                    <group string="Notifications">
+                        <group>
+                            <field name="default_user_ids" widget="many2many_tags"/>
+                            <field name="company_ids" widget="many2many_tags"/>
+                        </group>
+                        <group>
+                            <field name="developer_mode"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="whatsapp_account_list_view" model="ir.ui.view">
+        <field name="name">whatsapp.account.list.view</field>
+        <field name="model">whatsapp.account</field>
+        <field name="arch" type="xml">
+            <list string="WhatsApp Business Accounts">
+                <field name="name"/>
+                <field name="server_url"/>
+                <field name="instance_name"/>
+                <field name="template_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_whatsapp_account" model="ir.actions.act_window">
+        <field name="name">WhatsApp Business Accounts</field>
+        <field name="res_model">whatsapp.account</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a WhatsApp Business Account
+            </p>
+            <p>
+                Connect an Evolution API instance to start sending and receiving messages.
+            </p>
+        </field>
+    </record>
+</odoo>

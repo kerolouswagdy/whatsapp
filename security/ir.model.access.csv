@@ -1,0 +1,12 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_wa_message,access.wa.message,model_wa_message,base.group_user,1,1,1,1
+access_wa_message_template,access.wa_message_template,model_wa_message_template,base.group_user,1,1,1,1
+access_wa_message_template_params,access.wa_message_template_params,model_wa_message_template_params,base.group_user,1,1,1,1
+access_wa_message_model_adaptation,access.wa_message_model_adaptation,model_wa_message_model_adaptation,base.group_user,1,1,1,1
+access_mail_compose_message_wa_value,access.mail_compose_message_wa_value,model_mail_compose_message_wa_value,base.group_user,1,1,1,1
+access_wa_webhook_messages,access.wa_webhook_messages,model_wa_webhook_messages,base.group_user,1,1,1,1
+access_whatsapp_account,access.whatsapp_account,model_whatsapp_account,base.group_user,1,1,1,1
+access_wa_message_template_button,access.wa_message_template_button,model_wa_message_template_button,base.group_user,1,1,1,1
+access_wa_qr_code,access.wa_qr_code,model_wa_qr_code,base.group_user,1,1,1,1
+access_whatsapp_account_connect_wizard,access.whatsapp_account_connect_wizard,model_whatsapp_account_connect_wizard,base.group_user,1,1,1,1
+access_wa_conversation_favorite,access.wa_conversation_favorite,model_wa_conversation_favorite,base.group_user,1,1,1,1

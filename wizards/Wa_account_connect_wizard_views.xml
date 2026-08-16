@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="whatsapp_account_connect_wizard_form" model="ir.ui.view">
+        <field name="name">whatsapp.account.connect.wizard.form</field>
+        <field name="model">whatsapp.account.connect.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Link WhatsApp Device">
+                <field name="account_id" invisible="1"/>
+                <div class="d-flex flex-wrap justify-content-center align-items-center" style="gap: 32px; padding: 8px 4px; min-width: 480px;">
+                    <div style="flex: 1 1 260px; min-width: 240px;">
+                        <h2>Scan to link</h2>
+                        <p class="text-muted mb-3">
+                            Link this Evolution API instance to a WhatsApp phone number.
+                        </p>
+                        <ol style="padding-inline-start: 20px; line-height: 2.2;">
+                            <li>Open <b>WhatsApp</b> on the phone you want to connect</li>
+                            <li>Tap <b>Settings</b> &gt; <b>Linked Devices</b></li>
+                            <li>Tap <b>Link a Device</b></li>
+                            <li>Point your phone at the QR code on the right</li>
+                        </ol>
+                        <div class="text-muted mt-2" invisible="not pairing_code">
+                            Or, on the "Link a Device" screen, tap
+                            <b>"Link with phone number instead"</b> and enter:
+                            <field name="pairing_code" readonly="1" nolabel="1" class="fw-bold"/>
+                        </div>
+                        <div class="mt-3">
+                            <span class="badge text-bg-success" invisible="connection_state != 'open'">Connected</span>
+                            <span class="badge text-bg-warning" invisible="connection_state != 'connecting'">Waiting for scan</span>
+                            <span class="badge text-bg-danger" invisible="connection_state != 'close'">Not connected</span>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-column align-items-center justify-content-center" style="flex: 0 0 auto;">
+                        <div class="border rounded p-2 bg-white">
+                            <field name="qr_image" widget="image" nolabel="1" options="{'size': [260, 260]}"/>
+                        </div>
+                        <div class="d-flex mt-3" style="gap: 8px;">
+                            <button name="action_refresh" type="object" string="Refresh QR" class="btn btn-secondary" icon="fa-refresh"/>
+                            <button name="action_check_connection" type="object" string="Check Connection" class="btn btn-primary" icon="fa-check"/>
+                        </div>
+                    </div>
+                </div>
+                <footer>
+                    <button string="Close" class="btn btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>
