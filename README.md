@@ -1,123 +1,256 @@
-# odoo-whatsapp-api
-Odoo WhatsApp 360 Dialog Integration
-<h2> Description</h2>
-This module allows to send messages in any Odoo model. The messages can be from pre-loaded templates of the 360 Dialog namespace or manually writen if the conversation has already been started.
-If the message fails, and activity will be created in order to correct the issue.<br/>
-This module was tested in v15, v16 and v17.
+# دليل تشغيل سيرفر Odoo + موديول WhatsApp (odoo_whatsapp_api)
 
-<h2>Requirements</h2>
-To use this module you need to have an authorized API key. You can request one  <a href="https://services.tochat.be/es/whatsapp-business-directory/877b04a9-edb7-45cf-893c-8c9a44fa0bad" target="_blank"><span>here.</span></a>
- <br/><br/>
-For development purposes there is a Sandbox environment, in which you can get a free API key to send unlimited WhatsApp Messages to your own phone Number. <br/>
-This module allows to send messages using the development environment. Check out the <a href="https://docs.360dialog.com/docs/waba-messaging/sandbox" target="_blank"><span>sandbox docs</span></a>
- <span> to get you free API key</span><br/>
+الدليل ده مكتوب عشان أي حد يقدر يشغّل السيرفر، يوقفه، يعمل Upgrade للموديول،
+ويحل أشهر المشاكل - من غير ما يحتاج يفهم الكود أو يسأل حد.
 
-<h2>Installation</h2>
-<span>
-1. Download or clone the repository and put it in any folder of your Odoo addons path.<br/>
-<br/>
-2. Configure module dependencies. This module allows to send messages in any model of Odoo. That means you can send WhatsApp messages in your leads, opportunities, purchases, sales, invoices or any other document you are managing. By default the WhatsApp messages are set only in the CRM module. You can change this in the `__manifest__.py` file located in the main directory.
-<br/>
-<br/>
+---
 
+## 1. معلومات السيرفر الأساسية
 
-![dependencies_conf](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/26c1bd3f-e973-4e8e-ba4e-0b733b81d1f7)
+| البند | القيمة |
+|---|---|
+| نظام التشغيل | Windows |
+| مكان تثبيت Odoo | `E:\odoo\server` |
+| Python المستخدم | `E:\odoo\python\python.exe` |
+| ملف تشغيل السيرفر | `E:\odoo\server\odoo-bin` |
+| ملف الإعدادات (config) | `E:\odoo\server\odoo.conf` |
+| قاعدة البيانات | PostgreSQL - اسمها `odoo19` على `localhost:5432` |
+| اسم الجهاز (Host) | `DESKTOP-P35EV0O` |
+| البورت | `8069` (الرابط: `http://localhost:8069` أو `http://<اسم الجهاز>:8069`) |
+| إصدار Odoo | 19.0 |
 
- 
- 
- 
-<br/>
-3. Install the module. Start your Odoo server, go to the Apps menú and search for the module. Note: clean the search bar default filters. If the module does not appear, you can try clicking the "Update Apps List" located in the upper menu bar (with the <a href="https://www.odoo.com/documentation/17.0/applications/general/developer_mode.html#:~:text=Open%20the%20command%20palette%20by,with%20assets%20or%20deactivate%20it.&text=The%20Odoo%20Debug%20browser%20extension,Store%20and%20Firefox%20Add%2Dons." target="_blank"> odoo developer mode <a/> activated) or review in the odoo.conf the addons path. 
- <br/>
-<br/>
+### مسارات الإضافات (addons_path) في `odoo.conf`
+```
+E:\odoo\server\odoo\addons
+C:\Users\Dell\AppData\Local\OpenERP S.A.\Odoo\addons\19.0
+E:\odoo\server\custom_addons     <-- كل الموديولات الخاصة بينا هنا
+E:\odoo\server\addons
+```
 
- 
- ![install_module](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/0dae197e-e24d-40c8-bf39-6111deb8b0f0)
+> **ملحوظة:** لو ظهر تحذير `invalid addons directory 'e:\odoo\server\addons'` في اللوج،
+> ده تحذير بس (المسار مش موجود فعليًا)، مش خطأ بيوقف السيرفر - ممكن تتجاهله أو تشيله من
+> `addons_path` في `odoo.conf` لو مضايقك.
 
- https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/install_module.jpeg
+### الموديولات الخاصة الموجودة في `custom_addons`
+- `odoo_whatsapp_api` - تكامل الواتساب (الموضوع الأساسي في الدليل ده)
+- `falcon_admin`
+- `dvs_van_sales`
+- `field_dispatch_dashboard`
+- `smart_clinic`
+- وموديولات تانية حسب المشروع
 
-<span/>
-<h2>Configuration</h2>
-To start sending messages, there are some issues to consider after installing the module:
+---
 
-<h4>Connection Settings</h4>
+## 2. تشغيل وإيقاف السيرفر
 
-Go to the Settings menu, select the WhatsApp section and fill the configuration settings.<br/>
-**API KEY**: add in the general config settings the company API-KEY. For Sandbox Api keys activate the Developer Mode. 
-<br/>
-<br/>
-**NAMESPACE**: add in the general config settings the company namespace. For developer environment use  `c8ae5f90_307a_ca4c_b8f6_d1e2a2573574`.
-<br/>
-<br/>
-**WEBHOOK ADDRESS** : the module needs the webhook connection to work properly. Every API key has its own unique WebHook configuration, so make sure it is not used for other developments. Complete the server url considering this example `https://your-odoo-domain.com`.
-The module sets the webhook url with the configured url followed by `/api/v1/whatsapp/webhook`<br/>
-For developer environment you can use free API development tools like POSTMAN requesting `http://localhost:8069/api/v1/whatsapp/webhook`
-<br/>
-<br/>
+### تشغيل السيرفر (طريقة عادية)
+افتح **Command Prompt** أو **PowerShell** واكتب:
+```
+E:\odoo\python\python.exe E:\odoo\server\odoo-bin -c E:\odoo\server\odoo.conf
+```
+لو كل حاجة تمام، هتشوف في آخر اللوج سطر شبه ده:
+```
+odoo.service.server: HTTP service (werkzeug) running on DESKTOP-P35EV0O:8069
+```
+وبعدها تقدر تفتح المتصفح على:
+```
+http://localhost:8069
+```
 
-![WhatsApp Image 2024-06-01 at 13 21 57](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/d0b2c8b9-9457-4206-83f4-87bcec152808)
+### إيقاف السيرفر
+في نفس الـ terminal اللي شغال فيه السيرفر، اضغط:
+```
+Ctrl + C
+```
+لو السيرفر شغال كـ Windows Service أو في الخلفية (مفيش terminal ظاهر)، افتح
+**Task Manager** ودوّر على process اسمه `python.exe` (اللي بياخد بورت 8069) واقفله من هناك،
+أو استخدم في PowerShell:
+```powershell
+Get-Process python | Where-Object {$_.Path -like "*E:\odoo*"} | Stop-Process
+```
 
+### إعادة تشغيل السيرفر بعد أي تعديل في الكود
+لازم توقف السيرفر (`Ctrl+C`) وتشغّله تاني بنفس الأمر اللي فوق - Odoo Python
+مبيعملش hot-reload للكود تلقائي.
 
- <h4><u>Other Settings</u></h4>
-**SET WEBHOOK**: once you complete the webhook url you have to set that connection clicking the Menu `WhatsApp > Configuration > Set Webhook`
-<br/>
-<br/>
+---
 
-![set_webhook](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/68649f41-0447-4fc6-921f-9bcf0f9bdfd8)
+## 3. تحديث موديول WhatsApp بعد أي تعديل في الكود
 
-<br/>
-<br/>
-**MODEL ADAPTATION**: this module allows to send whatsapp messages for any model that is subscribed to the mail and activity native features. For each model you have to add a configuration going to the menu `WhatsApp > Configuration > Model Adaptation`
-<br/>
-In order to send messages for a particular model, a model adaptation configuration needs to be added. For each model, you have to define:
-<br/>
-→ Message Error Activity Configuration: who is going to receive the activity notification when a message has failed. You can add a specific user or any user field of the model. If both fields are set, the Default User is taken into account only if the User field is not set.
-<br/>
-→ Phone Number Fields: define from witch fields contains the phone number information. You can select `res.partner` fields. If multiple fields are set, the `res.partner` fields have priority, looking first in the partner's `mobile` and if it's not set in `phone`<br/>
-By default the module has preloaded an example of configuration for `crm.lead` model:
-<br/>
-<br/>
+### الخطوات
+1. **وقّف السيرفر** الأول (Ctrl+C).
+2. استبدل فولدر `E:\odoo\server\custom_addons\odoo_whatsapp_api` بالنسخة الجديدة
+   (احذف القديم وحط الجديد مكانه، أو انسخ الملفات المعدّلة فوق القديمة).
+3. **شغّل السيرفر تاني** بنفس أمر التشغيل، لكن زوّد عليه `-u odoo_whatsapp_api`
+   عشان يعمل Upgrade للموديول تلقائي من غير ما تدوس زرار من الواجهة:
+   ```
+   E:\odoo\python\python.exe E:\odoo\server\odoo-bin -c E:\odoo\server\odoo.conf -u odoo_whatsapp_api
+   ```
+4. لو مفيش أخطاء في اللوج، سيبه شغال عادي (من غير `-u`) في المرات الجاية.
 
-![model_adaptation](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/978df6bd-6f09-4546-a98a-4c2925d9a337)
+### أو من الواجهة (لو السيرفر شغال بالفعل)
+1. `http://localhost:8069/odoo`
+2. **Apps** (من غير ما تكتب أي حاجة في مربع البحث، لازم تشيل فلتر "Apps" وتدور
+   بالاسم لو الموديول مش ظاهر - أو فعّل **Developer Mode** الأول من
+   Settings > General Settings > تحت خانة "Activate the developer mode").
+3. دوّر على **WhatsApp API** (أو `odoo_whatsapp_api`).
+4. دوس على التلات نقط ⋮ فوق الكارت بتاعه، اختار **Upgrade**.
 
-https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/model_adaptation.png
+---
 
-<br/>
-<br/>
-**MESSAGE TEMPLATES**: the  Templates of your Namespace can be managed in the menu `WhatsApp > Configuration > Message Templates`. Make sure to set up properly the 360 Dialog Reference and the language.<br/>
-For templates that uses params, you have to configure the content of them. Each param variable is going to be replaced in the content in the '[]' space. <br/>
-The variable params can be either custom plain text or filled with any model field (only char and many2one fields).<br/>
-For developer purposes check out the <a href="https://docs.360dialog.com/docs/waba-messaging/sandbox#id-5.-send-a-template-message-optional">Sandbox available templates.<a/><br/>
-Here is an example of the `first_welcome_messsage` template:
-<br/>
-<br/>
+## 4. تفعيل Developer Mode (وضع المطوّر)
+محتاجه عشان تقدر تشوف تفاصيل تقنية (زي اللوج التفصيلي، أو موديولات مش ظاهرة عادي):
+```
+http://localhost:8069/web?debug=1
+```
+أو من Settings > General Settings > انزل تحت لحد "Developer Tools" ودوس
+**Activate the developer mode**.
 
-![message_template](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/7e260482-3c8a-4fe8-b1f1-7f7522919cee)
+---
 
-https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/message_template.png
+## 5. إعدادات حساب الواتساب (Evolution API)
 
-<br/>
-<h2>Usage</h2>
-This module modifies two native Odoo features:
-<br/>
-→ **Mail Compose Wizard**: every odoo model subscribed to the `mail` features, can send an email with the mail compose wizard.
-In this form you can find an WhatsApp Checkbox to change the functionality to send a WhatsApp Message instead an email.
-<br/>
-<br/>
+الموديول بيتكلم مع سيرفر **Evolution API** (مش Meta WhatsApp Cloud API الرسمي).
+الإعدادات دي بتتحط من داخل أودو مش في أي ملف كونفچ:
 
-![send_message](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/4a046045-c174-45d0-a364-2d886d01ef08)
+1. روح لـ **WhatsApp > Configuration > Accounts**.
+2. افتح حساب الشركة، وهتلاقي فيه:
+   - **Server URL**: رابط سيرفر Evolution API بتاعك (مثلاً `https://evo.example.com`).
+   - **Instance Name**: اسم الـ instance اللي متسجل عليه رقم الواتساب.
+   - **API Key**: مفتاح الدخول بتاع Evolution.
+   - **Default Country Code**: كود الدولة الافتراضي (مثلاً `20` لمصر) بيستخدمه
+     السيستم لو رقم جاله من غير كود دولة.
+3. **Callback URL / Webhook URL**: اللي المفروض يتسجل في Evolution Manager نفسه
+   (مش في أودو) على:
+   ```
+   http://<رابط السيرفر بتاعك>/api/v1/whatsapp/webhook
+   ```
+   ده اللي Evolution بيبعت عليه كل الأحداث (رسايل جديدة، تحديث حالة الاتصال...).
 
-https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/send_message.png
+### شاشة الشات المباشر (Live Chat)
+`WhatsApp` (القائمة الرئيسية) > بتفتح شاشة شات كاملة زي واتساب ويب، فيها:
+- المحادثات (Conversations) - مقسّمة تابات: الكل / غير مقروءة / جروبات / مفضّلة.
+- إرسال نص وميديا.
+- تفاعل بإيموجي (React) على أي رسالة.
+- Forward لرسالة لرقم/محادثة تانية.
+- حذف رسالة "عندي بس" (Delete for me).
+- استيراد تاريخ محادثة قديمة (Sync History).
 
-<br/>
-→ **Message Post With Template**: massive emailing can use this method to send a predefine template. The mail templates have a configuration that links that template with a 360 Dialog Template. When a message is post with a Mail Template related to a WhatsApp template the mail is replaced with a WhatsApp message. 
-This is used by the Mail Automation module.
-<br/>
-<br/>
+---
 
-![email_template](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/37144f97-8efa-4865-b010-d5354cb1a529)
+## 6. أشهر المشاكل وحلولها
 
-https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/email_template.png
+### ❌ `psycopg2.pool.PoolError: The Connection Pool Is Full`
+**السبب:** Evolution API بيدخل في حلقة إعادة اتصال (reconnect loop) وبيبعت
+مئات أحداث `connection-update` في الثانية، وكل واحدة فيهم كانت (قبل الإصلاح)
+بتفتح اتصال جديد بقاعدة البيانات.
+**الحل:** اتصلح في كود الموديول (فلترة الأحداث دي قبل ما توصل للداتابيز +
+دمج التكرارات في نفس الثانية). لو المشكلة رجعت تاني:
+1. تأكد إن `odoo.conf` فيه:
+   ```
+   db_maxconn = 128
+   workers = 4
+   ```
+2. تأكد إن جهاز/رقم الواتساب متصل بشكل مستقر (مش بيفصل ويرجع يحاول يتصل
+   باستمرار) - افتح شاشة الشات (WhatsApp Live Chat) وشوف حالة الاتصال فوق.
 
-<h2>Technical Support</h2>
-Contact: info@chatwith.io
+### ❌ التوست الأحمر "Odoo Server Error" بيظهر باستمرار وانت فاتح شات
+عادي لو حصل مرة واحدة بسبب اتصال بطيء لحظي - الشاشة بقت بتحاول تاني تلقائي
+من غير ما تضايقك بتوست متكرر (اتصلح في الكود). لو استمر:
+1. افتح **Developer Console** في المتصفح (F12) > تبويب **Console**.
+2. دوّر على سطور تبدأ بـ `WhatsApp fullview:` - هتقولك السبب الحقيقي.
+3. لو السبب اتصال بالداتابيز، شوف الحل اللي فوق (Connection Pool).
+
+### ❌ محادثات الجروبات مش ظاهرة في تاب "Groups"
+**السبب الأغلب:** إعداد **Ignore Groups** مفعّل في إعدادات الـ instance
+جوه Evolution Manager نفسه (مش في أودو) - وده بيمنع Evolution من إنه يبعت
+أي حدث لرسايل الجروبات من الأساس.
+**الحل:**
+1. ادخل على Evolution Manager (لوحة تحكم سيرفر Evolution API نفسه).
+2. روح لإعدادات الـ Instance بتاعك، دوّر على **Ignore Groups / Groups Ignore**،
+   وتأكد إنه **Off**.
+3. ابعت رسالة تجربة في أي جروب، وشوف لوج أودو وقتها - لو ظهر سطر فيه
+   `messages.upsert` و `@g.us`، يبقى اتحل والجروب هيبان في الشاشة.
+
+### ❌ زرار الـ React (التفاعل بإيموجي) مش شغال في الجروبات
+اتصلح في الكود (كان بيبعت الرقم بصيغة غلط للجروبات). لو لسه مش شغال بعد
+تحديث الموديول، تأكد إنك عملت **Upgrade** فعلي للموديول (خطوة 3 فوق) مش
+مجرد إعادة تشغيل عادي.
+
+### ❌ السيرفر مش عايز يفتح / بورت 8069 مشغول
+معناها فيه نسخة تانية من Odoo شغالة بالفعل. من PowerShell:
+```powershell
+netstat -ano | findstr :8069
+```
+هيديك رقم الـ PID، وبعدين:
+```powershell
+taskkill /PID <الرقم> /F
+```
+
+### ❌ رسالة "Missing `author` key in manifest" أو تحذيرات WARNING تانية في اللوج
+دي تحذيرات (Warnings) بس مش أخطاء - السيرفر بيشتغل عادي معاها، ممكن تتجاهل.
+
+---
+
+## 7. هيكل ملفات موديول odoo_whatsapp_api (للمرجعية السريعة)
+
+```
+odoo_whatsapp_api/
+├── __init__.py
+├── __manifest__.py
+├── controllers/
+│   ├── webhook.py                     <- الموديلات: wa.message, wa.webhook.messages, ...
+│   ├── whatsapp_webhook_controller.py <- استقبال الأحداث من Evolution (الـ webhook endpoint)
+│   ├── whatsapp_fullview_controller.py<- الـ API بتاع شاشة الشات المباشر
+│   ├── wa_message_fullview.py         <- منطق شاشة الشات (المحادثات/الجروبات/التفاعلات)
+│   └── website_widget.py              <- ويدجت شات الموقع (لو مفعّل)
+├── models/
+│   ├── whatsapp_account.py            <- إعدادات الحساب (Server URL / API Key / ...)
+│   ├── wa_message_template.py
+│   ├── wa_qr_code.py
+│   ├── Wa_account_connect_wizard.py
+│   ├── whatsapp_account_fullview.py
+│   ├── wa_conversation_favorite.py
+│   ├── mail_template.py
+│   └── res_config_settings.py
+├── static/src/
+│   ├── js/whatsapp_full_view.js       <- الفرونت إند بتاع شاشة الشات الكاملة
+│   ├── xml/whatsapp_full_view.xml
+│   └── scss/whatsapp_full_view.scss
+├── views/                             <- شاشات الإعدادات والتقارير جوه أودو
+├── wizards/
+├── data/
+└── security/ir.model.access.csv       <- صلاحيات الوصول للموديلات
+```
+
+> **ملحوظة مهمة:** فيه ملف قديم متروك بنفس الاسم `wa_message_fullview.py`
+> جوه فولدر `models/` كمان - **ده مش شغال خالص** (مش متسجل في
+> `models/__init__.py`)، والنسخة الشغالة فعليًا هي اللي جوه `controllers/`.
+> ماتلمسش/تعدّلش في نسخة `models/` دي غلط، تعديلاتك مش هتشتغل.
+
+---
+
+## 8. تشيك سريع إن كل حاجة شغالة (Health Check)
+
+بعد أي تشغيل/تحديث، اتأكد من الآتي بالترتيب:
+
+1. **السيرفر شغال؟** افتح `http://localhost:8069` وشوف صفحة تسجيل الدخول بتظهر.
+2. **الموديول متثبت ومحدّث؟** Apps > دوّر على WhatsApp API > تأكد إن فيه زرار
+   "Upgrade" مش "Install" (يعني هو متثبت بالفعل).
+3. **الاتصال بـ Evolution شغال؟** افتح شاشة WhatsApp Live Chat > لازم تشوف
+   المحادثات بتحمّل من غير ما تفضل عالقة على شاشة QR Code.
+4. **اللوج نضيف؟** افتح ملف اللوج (أو شوف الـ terminal) وتأكد مفيش
+   `PoolError` أو `ERROR` متكررة بشكل غير طبيعي.
+
+---
+
+## 9. جهات اتصال / مراجع سريعة
+
+| الحاجة | الرابط/المكان |
+|---|---|
+| واجهة أودو | `http://localhost:8069/odoo` |
+| Developer Mode | `http://localhost:8069/web?debug=1` |
+| شاشة الشات المباشر | من القائمة الرئيسية > WhatsApp |
+| Webhook endpoint (للتسجيل في Evolution) | `http://<سيرفرك>/api/v1/whatsapp/webhook` |
+| ملف الإعدادات | `E:\odoo\server\odoo.conf` |
+| فولدر الموديولات الخاصة | `E:\odoo\server\custom_addons\` |
