@@ -1,96 +1,123 @@
-# Odoo WhatsApp API (Evolution API Edition)
+# odoo-whatsapp-api
+Odoo WhatsApp 360 Dialog Integration
+<h2> Description</h2>
+This module allows to send messages in any Odoo model. The messages can be from pre-loaded templates of the 360 Dialog namespace or manually writen if the conversation has already been started.
+If the message fails, and activity will be created in order to correct the issue.<br/>
+This module was tested in v15, v16 and v17.
 
-Send and receive WhatsApp messages directly from Odoo — on any model (leads, sales orders, invoices, tickets...) — through a **self‑hosted [Evolution API](https://doc.evolution-api.com/) instance** (a Baileys‑based WhatsApp gateway), with a full built‑in chat inbox, website live‑chat widget, and Discuss integration.
+<h2>Requirements</h2>
+To use this module you need to have an authorized API key. You can request one  <a href="https://services.tochat.be/es/whatsapp-business-directory/877b04a9-edb7-45cf-893c-8c9a44fa0bad" target="_blank"><span>here.</span></a>
+ <br/><br/>
+For development purposes there is a Sandbox environment, in which you can get a free API key to send unlimited WhatsApp Messages to your own phone Number. <br/>
+This module allows to send messages using the development environment. Check out the <a href="https://docs.360dialog.com/docs/waba-messaging/sandbox" target="_blank"><span>sandbox docs</span></a>
+ <span> to get you free API key</span><br/>
 
-> **Note:** this module was originally built around the 360Dialog / Meta Cloud API. It has since been rewritten to work with **Evolution API**, a self‑hosted gateway that talks to WhatsApp through a linked phone number (QR‑code login), so no Meta Business/WABA account or per‑message API costs are required. Model names, menus and views were kept the same so upgrades from the old version are seamless.
+<h2>Installation</h2>
+<span>
+1. Download or clone the repository and put it in any folder of your Odoo addons path.<br/>
+<br/>
+2. Configure module dependencies. This module allows to send messages in any model of Odoo. That means you can send WhatsApp messages in your leads, opportunities, purchases, sales, invoices or any other document you are managing. By default the WhatsApp messages are set only in the CRM module. You can change this in the `__manifest__.py` file located in the main directory.
+<br/>
+<br/>
 
-## Description
 
-This module lets any Odoo record subscribed to `mail.thread` send and receive WhatsApp messages, and adds a full chat experience on top:
+![dependencies_conf](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/26c1bd3f-e973-4e8e-ba4e-0b733b81d1f7)
 
-- **Send messages** from any model using the native *Mail Compose* wizard (a WhatsApp checkbox switches the wizard from email to WhatsApp) or from configured message templates.
-- **Receive messages** via a webhook, automatically logged on the related record's chatter/Discuss channel, with an activity created for the configured user if a send fails.
-- **Full WhatsApp inbox inside Odoo** — a dedicated full‑page chat screen (conversations list, message history, media, emoji reactions, forwarding, favourites) talking live to your Evolution API instance.
-- **Website live‑chat widget** — visitors can start a real WhatsApp conversation from your website; replies (from WhatsApp or from Discuss) appear back in the same widget.
-- **Auto‑reply** — automatically answer a customer's first message with a template until a human takes over the conversation.
-- **QR "click to chat" codes** — generate `wa.me` deep‑link QR codes (e.g. for flyers/storefronts) with a pre‑filled message.
-- **Group name sync** — pulls real WhatsApp group subjects so group conversations don't stay stuck on a raw JID.
+ 
+ 
+ 
+<br/>
+3. Install the module. Start your Odoo server, go to the Apps menú and search for the module. Note: clean the search bar default filters. If the module does not appear, you can try clicking the "Update Apps List" located in the upper menu bar (with the <a href="https://www.odoo.com/documentation/17.0/applications/general/developer_mode.html#:~:text=Open%20the%20command%20palette%20by,with%20assets%20or%20deactivate%20it.&text=The%20Odoo%20Debug%20browser%20extension,Store%20and%20Firefox%20Add%2Dons." target="_blank"> odoo developer mode <a/> activated) or review in the odoo.conf the addons path. 
+ <br/>
+<br/>
 
-This module was tested on Odoo 19 (kept compatible with the model/view structure used since v15/v16/v17).
+ 
+ ![install_module](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/0dae197e-e24d-40c8-bf39-6111deb8b0f0)
 
-## Requirements
+ https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/install_module.jpeg
 
-- A running **Evolution API** server (self‑hosted, e.g. via Docker) with a WhatsApp instance linked by scanning a QR code. See the [Evolution API documentation](https://doc.evolution-api.com/) to set one up.
-- The instance's **Server URL**, **Instance Name** and **API Key** (`AUTHENTICATION_API_KEY` configured on your Evolution server).
-- Your Odoo server's public **`web.base.url`** must be reachable from the Evolution server so it can push the webhook (incoming messages, delivery status, connection updates).
-- Python package **`qrcode[pil]`** on the Odoo server if you want to generate "click to chat" QR codes (`pip install qrcode[pil]`).
+<span/>
+<h2>Configuration</h2>
+To start sending messages, there are some issues to consider after installing the module:
 
-Unlike the Meta Cloud API / 360Dialog approach, there are **no pre‑approved message templates or per‑message provider costs** — any text is sent as a normal WhatsApp message from the linked phone number, and templates configured in Odoo are just reusable text with variable substitution.
+<h4>Connection Settings</h4>
 
-## Installation
+Go to the Settings menu, select the WhatsApp section and fill the configuration settings.<br/>
+**API KEY**: add in the general config settings the company API-KEY. For Sandbox Api keys activate the Developer Mode. 
+<br/>
+<br/>
+**NAMESPACE**: add in the general config settings the company namespace. For developer environment use  `c8ae5f90_307a_ca4c_b8f6_d1e2a2573574`.
+<br/>
+<br/>
+**WEBHOOK ADDRESS** : the module needs the webhook connection to work properly. Every API key has its own unique WebHook configuration, so make sure it is not used for other developments. Complete the server url considering this example `https://your-odoo-domain.com`.
+The module sets the webhook url with the configured url followed by `/api/v1/whatsapp/webhook`<br/>
+For developer environment you can use free API development tools like POSTMAN requesting `http://localhost:8069/api/v1/whatsapp/webhook`
+<br/>
+<br/>
 
-1. Download or clone the repository into a folder on your Odoo addons path.
-2. Configure module dependencies. By default WhatsApp messaging is enabled only for the `crm.lead` model — you can add more via **WhatsApp > Configuration > Model Adaptation** after installing (no manifest edit needed).
-3. Install the module: **Apps** menu → clear default filters → search `odoo-whatsapp-api` (or `WhatsApp`). If it doesn't appear, click **Update Apps List** (requires [developer mode](https://www.odoo.com/documentation/17.0/applications/general/developer_mode.html)) or check the addons path in `odoo.conf`.
+![WhatsApp Image 2024-06-01 at 13 21 57](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/d0b2c8b9-9457-4206-83f4-87bcec152808)
 
-## Configuration
 
-### 1. Connect your Evolution API instance
+ <h4><u>Other Settings</u></h4>
+**SET WEBHOOK**: once you complete the webhook url you have to set that connection clicking the Menu `WhatsApp > Configuration > Set Webhook`
+<br/>
+<br/>
 
-Go to **WhatsApp > Configuration > Accounts** and create/edit an account:
+![set_webhook](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/68649f41-0447-4fc6-921f-9bcf0f9bdfd8)
 
-| Field | Description |
-|---|---|
-| **Server URL** | Base URL of your Evolution API server, e.g. `http://localhost:8080` (no trailing slash). |
-| **Instance Name** | The Evolution instance name you created/scanned the QR code for in the Evolution Manager. |
-| **API Key** | The `apikey` / `AUTHENTICATION_API_KEY` configured on your Evolution server. |
-| **Phone Number** | Informational — Evolution routes by instance, not by this field. |
-| **Default Country Code** | Prepended to locally‑formatted numbers (starting with a trunk `0`) before sending. |
+<br/>
+<br/>
+**MODEL ADAPTATION**: this module allows to send whatsapp messages for any model that is subscribed to the mail and activity native features. For each model you have to add a configuration going to the menu `WhatsApp > Configuration > Model Adaptation`
+<br/>
+In order to send messages for a particular model, a model adaptation configuration needs to be added. For each model, you have to define:
+<br/>
+→ Message Error Activity Configuration: who is going to receive the activity notification when a message has failed. You can add a specific user or any user field of the model. If both fields are set, the Default User is taken into account only if the User field is not set.
+<br/>
+→ Phone Number Fields: define from witch fields contains the phone number information. You can select `res.partner` fields. If multiple fields are set, the `res.partner` fields have priority, looking first in the partner's `mobile` and if it's not set in `phone`<br/>
+By default the module has preloaded an example of configuration for `crm.lead` model:
+<br/>
+<br/>
 
-Then, on the account:
+![model_adaptation](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/978df6bd-6f09-4546-a98a-4c2925d9a337)
 
-- **Test Credentials** — checks the instance's connection state on the Evolution server.
-- **Link WhatsApp Device** — opens a "Scan to log in" popup showing the pairing QR code (scanned with the *business* phone, like WhatsApp Web).
-- **Set Webhook** — registers this module's callback URL (`<your-odoo-url>/api/v1/whatsapp/webhook`) on the Evolution instance so incoming messages, status updates and connection changes get pushed to Odoo automatically.
-- **Sync Group Names** — backfills real WhatsApp group names for groups already known to Odoo.
+https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/model_adaptation.png
 
-For local development, you can point the webhook at a tunneling tool (ngrok, etc.) or test it directly with an HTTP client against `http://localhost:8069/api/v1/whatsapp/webhook`.
+<br/>
+<br/>
+**MESSAGE TEMPLATES**: the  Templates of your Namespace can be managed in the menu `WhatsApp > Configuration > Message Templates`. Make sure to set up properly the 360 Dialog Reference and the language.<br/>
+For templates that uses params, you have to configure the content of them. Each param variable is going to be replaced in the content in the '[]' space. <br/>
+The variable params can be either custom plain text or filled with any model field (only char and many2one fields).<br/>
+For developer purposes check out the <a href="https://docs.360dialog.com/docs/waba-messaging/sandbox#id-5.-send-a-template-message-optional">Sandbox available templates.<a/><br/>
+Here is an example of the `first_welcome_messsage` template:
+<br/>
+<br/>
 
-### 2. Model Adaptation
+![message_template](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/7e260482-3c8a-4fe8-b1f1-7f7522919cee)
 
-For each Odoo model you want WhatsApp messaging enabled on, add a configuration under **WhatsApp > Configuration > Model Adaptation**:
+https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/message_template.png
 
-- **Message Error Activity Configuration** — who receives the activity notification when a message fails (a specific user and/or a user field on the model; the specific user is used only if the field isn't set).
-- **Phone Number Fields** — which field(s) hold the phone number. If a `res.partner` field is set, its `mobile` is used first, falling back to `phone`.
+<br/>
+<h2>Usage</h2>
+This module modifies two native Odoo features:
+<br/>
+→ **Mail Compose Wizard**: every odoo model subscribed to the `mail` features, can send an email with the mail compose wizard.
+In this form you can find an WhatsApp Checkbox to change the functionality to send a WhatsApp Message instead an email.
+<br/>
+<br/>
 
-A default configuration for `crm.lead` is preloaded.
+![send_message](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/4a046045-c174-45d0-a364-2d886d01ef08)
 
-### 3. Message Templates
+https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/send_message.png
 
-Manage reusable message templates under **WhatsApp > Configuration > Message Templates**. Templates can include `[]` placeholder variables, each mapped either to free text or to a field on the model (char or many2one fields). Since Evolution API has no server‑side approved‑template concept, these are rendered locally and sent as regular text messages.
+<br/>
+→ **Message Post With Template**: massive emailing can use this method to send a predefine template. The mail templates have a configuration that links that template with a 360 Dialog Template. When a message is post with a Mail Template related to a WhatsApp template the mail is replaced with a WhatsApp message. 
+This is used by the Mail Automation module.
+<br/>
+<br/>
 
-### 4. Auto‑Reply
+![email_template](https://github.com/chatwithio/odoo-whatsapp-api/assets/89967182/37144f97-8efa-4865-b010-d5354cb1a529)
 
-On a WhatsApp account, enable **Auto‑Reply** and pick a template. It's sent automatically on a customer's first (and subsequent) message until an operator replies from Odoo or from the linked phone directly — at which point auto‑reply stops for that conversation.
+https://github.com/chatwithio/odoo-whatsapp-api/tree/main/static/description/email_template.png
 
-### 5. Website Live‑Chat Widget
-
-Under **Settings > WhatsApp**, set the public **Website WhatsApp Number**, a **Welcome Message**, and default **Discuss operators** to notify when no per‑model operators are configured. The widget lets visitors chat over real WhatsApp without leaving your site; replies are polled by a private `conversation_token` so visitors can't see each other's conversations.
-
-## Usage
-
-- **Mail Compose Wizard** — any model subscribed to `mail` gets a WhatsApp checkbox in the compose wizard to send a WhatsApp message instead of an email.
-- **Message Post With Template** — mass mailing (e.g. Mail Automation) using a `mail.template` linked to a WhatsApp template automatically sends a WhatsApp message instead of an email.
-- **WhatsApp Inbox** — the full‑page chat screen (menu **WhatsApp**) shows all conversations, lets you send text and media, react with emoji, forward messages, mark favourites, and sync older history from WhatsApp.
-- **Discuss** — inbound WhatsApp conversations open a Discuss channel per contact; replying from that channel sends the reply back out over WhatsApp.
-- **QR Codes** — generate click‑to‑chat QR codes per account under **WhatsApp > Configuration > QR Codes**.
-
-## Technical Notes
-
-- Webhook endpoints: `POST /api/v1/whatsapp/webhook` (raw Evolution events) and `POST /api/v1/whatsapp/webhook/<event_name>` (used when Evolution's "Webhook by Events" mode is enabled).
-- Website widget endpoints live under `/api/v1/whatsapp/widget/*`.
-- Internal full‑view chat screen endpoints live under `/whatsapp/fullview/*` (`auth='user'`, scoped to the current user's company account).
-- Incoming media (images/audio/video/documents) requires `webhookBase64: true` on the Evolution webhook config (set automatically by **Set Webhook**) so files arrive inlined instead of as an encrypted `mediaKey`.
-
-## Technical Support
-
+<h2>Technical Support</h2>
+Contact: info@chatwith.io

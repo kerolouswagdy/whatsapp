@@ -139,6 +139,7 @@ export class WhatsappFullView extends Component {
         return name.trim().charAt(0).toUpperCase();
     }
 
+    // بتتستخدم في قايمة المحادثات بس (آخر نشاط): وقت لو النهاردة، تاريخ لو أقدم.
     formatDate(dateStr) {
         if (!dateStr) return "";
         const d = new Date(dateStr.replace(" ", "T") + "Z");
@@ -148,6 +149,44 @@ export class WhatsappFullView extends Component {
             return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         }
         return d.toLocaleDateString();
+    }
+
+    // الوقت اللي بيبان جوه كل فقاعة رسالة - دايمًا وقت بس (زي واتساب
+    // الأصلي)، التاريخ نفسه بيتعرض مرة واحدة كـ "فاصل يوم" فوق كل مجموعة
+    // رسايل (شوف dayLabel() و get messagesWithSeparators() تحت).
+    formatBubbleTime(dateStr) {
+        if (!dateStr) return "";
+        const d = new Date(dateStr.replace(" ", "T") + "Z");
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    // نص الفاصل فوق مجموعة الرسايل: "النهاردة" / "إمبارح" / تاريخ كامل.
+    dayLabel(dateStr) {
+        if (!dateStr) return "";
+        const d = new Date(dateStr.replace(" ", "T") + "Z");
+        const now = new Date();
+        const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+        const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+        if (diffDays === 0) return "النهاردة";
+        if (diffDays === 1) return "إمبارح";
+        return d.toLocaleDateString("ar-EG", { day: "numeric", month: "long", year: "numeric" });
+    }
+
+    // بترجّع نسخة من state.messages بعد ما تحقن فاصل يوم قبل أول رسالة
+    // في كل يوم جديد - العنصر ده بيتعرف في الـ XML بعلامة is_day_separator.
+    get messagesWithSeparators() {
+        const out = [];
+        let lastDay = null;
+        for (const msg of this.state.messages) {
+            const d = new Date((msg.date || "").replace(" ", "T") + "Z");
+            const dayKey = d.toDateString();
+            if (dayKey !== lastDay) {
+                out.push({ is_day_separator: true, id: "sep-" + dayKey, label: this.dayLabel(msg.date) });
+                lastDay = dayKey;
+            }
+            out.push(msg);
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------

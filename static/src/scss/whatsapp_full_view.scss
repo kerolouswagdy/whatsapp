@@ -265,8 +265,25 @@
         &.o_wa_out { justify-content: flex-end; }
         &.o_wa_in { justify-content: flex-start; }
     }
+    .o_wa_day_separator {
+        display: flex;
+        justify-content: center;
+        margin: 10px 0;
+        span {
+            background: #e1f0fb;
+            color: #54656f;
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 8px;
+        }
+    }
+    .o_wa_bubble_unsupported {
+        color: #8696a0;
+        font-style: italic;
+    }
     .o_wa_bubble {
         max-width: 65%;
+        min-width: 68px;
         padding: 6px 9px 20px;
         border-radius: 8px;
         position: relative;
