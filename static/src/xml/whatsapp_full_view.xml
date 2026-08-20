@@ -120,6 +120,18 @@
                                 <img t-if="msg.has_media and msg.media_type === 'image' and !state.failedImageIds.includes(msg.id)"
                                      class="o_wa_bubble_media_image" t-att-src="mediaUrl(msg)"
                                      t-on-error="() => this.onImageError(msg.id)"/>
+                                <div t-elif="msg.has_media and msg.media_type === 'audio'" class="o_wa_bubble_media_audio"
+                                     t-on-click="(ev) => ev.stopPropagation()">
+                                    <span class="o_wa_audio_play_icon">🎤</span>
+                                    <audio controls="controls" preload="metadata" t-att-src="mediaUrl(msg)"/>
+                                    <button type="button" class="o_wa_audio_more_btn"
+                                            title="خيارات"
+                                            t-on-click="(ev) => this.onBubbleClick(msg, ev)">⋮</button>
+                                </div>
+                                <video t-elif="msg.has_media and msg.media_type === 'video'"
+                                       class="o_wa_bubble_media_video"
+                                       controls="controls" preload="metadata" t-att-src="mediaUrl(msg)"
+                                       t-on-click="(ev) => ev.stopPropagation()"/>
                                 <a t-elif="msg.has_media" class="o_wa_bubble_media_file"
                                    t-att-href="mediaUrl(msg)" target="_blank">
                                     <span class="o_wa_file_icon" t-esc="fileIcon(msg.media_type)"/>
@@ -147,6 +159,14 @@
                         <div class="o_wa_quick_reactions">
                             <span t-foreach="quickReactions" t-as="emoji" t-key="emoji"
                                   class="o_wa_quick_reaction" t-on-click="() => this.pickReaction(emoji)"
+                                  t-esc="emoji"/>
+                            <span class="o_wa_quick_reaction o_wa_quick_reaction_more"
+                                  title="المزيد من الإيموجيز"
+                                  t-on-click="toggleMoreReactions">+</span>
+                        </div>
+                        <div t-if="state.actionMenu.moreOpen" class="o_wa_more_reactions">
+                            <span t-foreach="extraReactions" t-as="emoji" t-key="emoji"
+                                  class="o_wa_more_reaction" t-on-click="() => this.pickReaction(emoji)"
                                   t-esc="emoji"/>
                         </div>
                         <div class="o_wa_action_menu_items">
@@ -182,19 +202,39 @@
                     <form class="o_wa_composer" t-on-submit="sendMessage">
                         <input type="file" t-ref="fileInput" class="o_wa_file_input"
                                t-on-change="onFileChange"/>
-                        <button type="button" class="o_wa_attach_btn" title="إرفاق صورة أو ملف"
-                                t-on-click="onAttachClick">📎</button>
-                        <div class="o_wa_composer_main">
-                            <div t-if="state.attachment" class="o_wa_attachment_preview">
-                                <img t-if="state.attachmentPreviewUrl" t-att-src="state.attachmentPreviewUrl"/>
-                                <span t-else="" class="o_wa_attachment_filename" t-esc="state.attachment.name"/>
-                                <button type="button" class="o_wa_attachment_remove"
-                                        t-on-click="clearAttachment">✕</button>
+
+                        <!-- شريط التسجيل: بيظهر بدل باقي الـ composer وإنت بتسجل -->
+                        <t t-if="state.recording.active">
+                            <button type="button" class="o_wa_recording_cancel" title="إلغاء التسجيل"
+                                    t-on-click="cancelRecording">🗑️</button>
+                            <div class="o_wa_recording_bar">
+                                <span class="o_wa_recording_dot"/>
+                                <span class="o_wa_recording_time" t-esc="recordingTimeLabel"/>
+                                <span class="o_wa_recording_hint">جاري التسجيل...</span>
                             </div>
-                            <input type="text" placeholder="اكتب رسالة أو الصق لينك..."
-                                   t-model="state.draft" t-on-keydown="onDraftKeydown"/>
-                        </div>
-                        <button type="submit" t-att-disabled="state.sending">إرسال</button>
+                            <button type="button" class="o_wa_recording_stop" title="إيقاف التسجيل"
+                                    t-on-click="stopRecording">⏹️</button>
+                        </t>
+                        <t t-else="">
+                            <button type="button" class="o_wa_attach_btn" title="إرفاق صورة أو ملف"
+                                    t-on-click="onAttachClick">📎</button>
+                            <div class="o_wa_composer_main">
+                                <div t-if="state.attachment" class="o_wa_attachment_preview">
+                                    <img t-if="state.attachmentPreviewUrl" t-att-src="state.attachmentPreviewUrl"/>
+                                    <span t-elif="state.attachmentIsVoice" class="o_wa_attachment_filename">
+                                        🎤 رسالة صوتية <t t-esc="state.attachmentVoiceDuration"/>
+                                    </span>
+                                    <span t-else="" class="o_wa_attachment_filename" t-esc="state.attachment.name"/>
+                                    <button type="button" class="o_wa_attachment_remove"
+                                            t-on-click="clearAttachment">✕</button>
+                                </div>
+                                <input type="text" placeholder="اكتب رسالة أو الصق لينك..."
+                                       t-model="state.draft" t-on-keydown="onDraftKeydown"/>
+                            </div>
+                            <button t-if="!hasDraftOrAttachment" type="button" class="o_wa_mic_btn"
+                                    title="تسجيل رسالة صوتية" t-on-click="onMicClick">🎤</button>
+                            <button t-else="" type="submit" t-att-disabled="state.sending">إرسال</button>
+                        </t>
                     </form>
                 </t>
             </div>

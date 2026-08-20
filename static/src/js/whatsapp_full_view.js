@@ -8,6 +8,17 @@ const { Component, useState, onWillStart, onMounted, onWillUnmount, useRef } = o
 // الإيموجيز السريعة اللي بتظهر أول ما تدوس على رسالة - زي واتساب بالظبط.
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
+// لما المستخدم يدوس على "+" بيفتحله مجموعة إيموجيز أوسع يختار منها.
+const EXTRA_REACTIONS = [
+    "😀", "😁", "😆", "😅", "🤣", "😊", "😇", "🙂", "🙃", "😉",
+    "😍", "🥰", "😘", "😜", "🤪", "😎", "🤩", "🥳", "😴", "🤔",
+    "🤭", "🤗", "🙄", "😐", "😏", "😢", "😭", "😤", "😡", "🤬",
+    "😱", "😨", "🥺", "😬", "🤢", "🤮", "🤧", "🥵", "🥶", "😷",
+    "🤯", "😳", "🤐", "🤫", "🫡", "🤝", "👏", "🙌", "👌", "✌️",
+    "🤞", "💪", "🙏", "👍", "👎", "👋", "🔥", "🎉", "💯", "❤️",
+    "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "✨", "⭐",
+];
+
 export class WhatsappFullView extends Component {
     setup() {
         this.messagesRef = useRef("messagesEnd");
@@ -27,19 +38,31 @@ export class WhatsappFullView extends Component {
             sending: false,
             attachment: null,
             attachmentPreviewUrl: false,
+            attachmentIsVoice: false,
+            attachmentVoiceDuration: "",
             failedImageIds: [],
             loadingOlder: false,
             noMoreOlder: false,
             // قائمة اختيارات الرسالة (React / Forward / Copy / حذف)
-            actionMenu: { open: false, messageId: false, top: 0, left: 0 },
+            actionMenu: { open: false, messageId: false, top: 0, left: 0, moreOpen: false },
             // شاشة اختيار المحادثة اللي هتتفورورد لها الرسالة
             forwardPanel: { open: false, messageId: false, phone: "" },
+            // حالة تسجيل الرسالة الصوتية (مايك حقيقي جوه الصفحة)
+            recording: { active: false, seconds: 0 },
         });
 
         this.fileInputRef = useRef("fileInput");
         this._statusTimer = null;
         this._convTimer = null;
         this._msgTimer = null;
+
+        // خاصين بالتسجيل الصوتي - مش جوه state عشان مش محتاجين reactivity
+        // عليهم (الـ MediaRecorder/Stream نفسهم، مش قيم بسيطة).
+        this._mediaRecorder = null;
+        this._recordedChunks = [];
+        this._recordingStream = null;
+        this._recordingTimer = null;
+        this._pendingRecordingAction = null; // "attach" | "discard"
 
         this._onDocumentClick = (ev) => {
             // أي دوسة برّه القائمة أو شاشة الفورورد تقفلهم.
@@ -65,6 +88,13 @@ export class WhatsappFullView extends Component {
             clearInterval(this._convTimer);
             clearInterval(this._msgTimer);
             document.removeEventListener("click", this._onDocumentClick, true);
+            // لو المستخدم قفل الصفحة أو غيّر المحادثة والمايك لسه شغال،
+            // نوقف الـ stream عشان مؤشر المايك يقفل من المتصفح.
+            clearInterval(this._recordingTimer);
+            if (this._recordingStream) {
+                this._recordingStream.getTracks().forEach((t) => t.stop());
+                this._recordingStream = null;
+            }
         });
     }
 
@@ -311,14 +341,129 @@ export class WhatsappFullView extends Component {
         this.state.attachment = file;
         this.state.attachmentPreviewUrl = file.type.startsWith("image/") ?
             URL.createObjectURL(file) : false;
+        this.state.attachmentIsVoice = false;
+        this.state.attachmentVoiceDuration = "";
     }
 
     clearAttachment() {
         this.state.attachment = null;
         this.state.attachmentPreviewUrl = false;
+        this.state.attachmentIsVoice = false;
+        this.state.attachmentVoiceDuration = "";
         if (this.fileInputRef.el) {
             this.fileInputRef.el.value = "";
         }
+    }
+
+    // ------------------------------------------------------------------
+    // تسجيل رسالة صوتية بالمايك جوه نفس الصفحة (زي واتساب بالظبط) -
+    // بدل ما زرار المرفقات يفتح نافذة اختيار ملف المتصفح العادية اللي
+    // بتفتح صفحة/تطبيق تسجيل منفصل. لما التسجيل يوقف، الصوت بيتحط
+    // كمرفق عادي في الـ composer (زي أي صورة/ملف) وبيتبعت بنفس زرار
+    // "إرسال" الموجود أصلاً.
+    // ------------------------------------------------------------------
+    get recordingTimeLabel() {
+        const total = this.state.recording.seconds;
+        const m = Math.floor(total / 60).toString().padStart(2, "0");
+        const s = (total % 60).toString().padStart(2, "0");
+        return `${m}:${s}`;
+    }
+
+    get hasDraftOrAttachment() {
+        return !!(this.state.draft || "").trim() || !!this.state.attachment;
+    }
+
+    _pickRecorderMimeType() {
+        const candidates = [
+            "audio/ogg;codecs=opus",
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/mp4",
+        ];
+        for (const type of candidates) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) {
+                return type;
+            }
+        }
+        return "";
+    }
+
+    async onMicClick() {
+        if (this.state.sending || this.state.recording.active) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+            this.env.services.notification.add(
+                "المتصفح ده مش بيدعم التسجيل الصوتي من جوه الصفحة", { type: "danger" }
+            );
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this._recordingStream = stream;
+            const mimeType = this._pickRecorderMimeType();
+            this._mediaRecorder = mimeType ?
+                new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            this._recordedChunks = [];
+            this._mediaRecorder.addEventListener("dataavailable", (ev) => {
+                if (ev.data && ev.data.size > 0) this._recordedChunks.push(ev.data);
+            });
+            this._mediaRecorder.addEventListener("stop", () => this._onRecordingStopped());
+            this._mediaRecorder.start();
+            this.state.recording.active = true;
+            this.state.recording.seconds = 0;
+            this._recordingTimer = setInterval(() => {
+                this.state.recording.seconds++;
+            }, 1000);
+        } catch (e) {
+            console.warn("WhatsApp fullview: mic access failed", e);
+            this.env.services.notification.add(
+                "مش قادر أوصل للمايك - تأكد إنك سمحت للمتصفح بالوصول له", { type: "danger" }
+            );
+        }
+    }
+
+    // بتوقف التسجيل وتحط الصوت كمرفق عادي في الـ composer.
+    stopRecording() {
+        if (!this._mediaRecorder || this._mediaRecorder.state === "inactive") return;
+        this._pendingRecordingAction = "attach";
+        this._mediaRecorder.stop();
+    }
+
+    // بتوقف التسجيل وترميه بلا رجعة (زرار سلة المهملات).
+    cancelRecording() {
+        this._pendingRecordingAction = "discard";
+        if (this._mediaRecorder && this._mediaRecorder.state !== "inactive") {
+            this._mediaRecorder.stop();
+        } else {
+            this._cleanupRecordingResources();
+        }
+    }
+
+    _cleanupRecordingResources() {
+        clearInterval(this._recordingTimer);
+        this._recordingTimer = null;
+        if (this._recordingStream) {
+            this._recordingStream.getTracks().forEach((t) => t.stop());
+            this._recordingStream = null;
+        }
+        this.state.recording.active = false;
+    }
+
+    _onRecordingStopped() {
+        const action = this._pendingRecordingAction;
+        this._pendingRecordingAction = null;
+        const chunks = this._recordedChunks;
+        this._recordedChunks = [];
+        const durationLabel = this.recordingTimeLabel;
+        const mimeType = (this._mediaRecorder && this._mediaRecorder.mimeType) || "audio/webm";
+        this._cleanupRecordingResources();
+        if (action !== "attach" || !chunks.length) return;
+        const blob = new Blob(chunks, { type: mimeType });
+        const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm";
+        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
+        this.state.attachment = file;
+        this.state.attachmentPreviewUrl = false;
+        this.state.attachmentIsVoice = true;
+        this.state.attachmentVoiceDuration = durationLabel;
     }
 
     async sendMessage(ev) {
@@ -403,22 +548,50 @@ export class WhatsappFullView extends Component {
             return;
         }
         this.closeForwardPanel();
-        // تحديد مكان القائمة جنب الرسالة اللي اتدوس عليها، من غير ما
-        // تطلع برّه شاشة الشات.
-        const container = this.messagesRef.el;
-        const containerRect = container ? container.getBoundingClientRect() : { top: 0, left: 0, width: 0 };
+        // القائمة (.o_wa_action_menu) مش جوه الـ .o_wa_messages القابلة للسكرول -
+        // هي شقيقة ليها جوه .o_wa_thread. علشان كده لازم نحسب المكان بالنسبة
+        // لـ .o_wa_thread (اللي هو الأب المُوضِّع الفعلي بتاعها)، من غير ما نضيف
+        // scrollTop تاني، لأن bubbleRect أصلاً بيعكس مكان الرسالة على الشاشة
+        // بعد السكرول.
+        const threadEl = ev.currentTarget.closest(".o_wa_thread") || this.messagesRef.el;
+        const containerRect = threadEl ? threadEl.getBoundingClientRect() : { top: 0, left: 0, width: 0, height: 0 };
         const bubbleRect = ev.currentTarget.getBoundingClientRect();
-        let top = bubbleRect.bottom - containerRect.top + (container ? container.scrollTop : 0) + 4;
+
+        // تقدير مبدئي لحجم القائمة عشان نمنعها تطلع برّه حدود الشات.
+        const estMenuWidth = 230;
+        const estMenuHeight = 170;
+
+        let top = bubbleRect.bottom - containerRect.top + 4;
+        if (top + estMenuHeight > containerRect.height) {
+            // مفيش مكان تحت الرسالة - افتح القائمة فوقها بدل تحتها.
+            top = bubbleRect.top - containerRect.top - estMenuHeight - 4;
+            if (top < 0) top = 4;
+        }
+
         let left = bubbleRect.left - containerRect.left;
-        this.state.actionMenu = { open: true, messageId: msg.id, top, left };
+        const maxLeft = Math.max(4, containerRect.width - estMenuWidth - 4);
+        if (left > maxLeft) left = maxLeft;
+        if (left < 4) left = 4;
+
+        this.state.actionMenu = { open: true, messageId: msg.id, top, left, moreOpen: false };
     }
 
     closeActionMenu() {
-        this.state.actionMenu = { open: false, messageId: false, top: 0, left: 0 };
+        this.state.actionMenu = { open: false, messageId: false, top: 0, left: 0, moreOpen: false };
     }
 
     get actionMenuMessage() {
         return this.state.actionMenu.open ? this._findMessage(this.state.actionMenu.messageId) : false;
+    }
+
+    // بيفتح/يقفل لوحة الإيموجيز الإضافية اللي بتظهر لما تدوس على "+".
+    toggleMoreReactions(ev) {
+        if (ev) ev.stopPropagation();
+        this.state.actionMenu.moreOpen = !this.state.actionMenu.moreOpen;
+    }
+
+    get extraReactions() {
+        return EXTRA_REACTIONS;
     }
 
     async pickReaction(emoji) {
