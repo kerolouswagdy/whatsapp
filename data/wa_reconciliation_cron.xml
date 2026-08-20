@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="ir_cron_wa_reconcile_missed_messages" model="ir.cron">
+        <field name="name">WhatsApp: Reconcile Missed Messages</field>
+        <field name="model_id" ref="model_wa_message"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_reconcile_missed_messages()</field>
+        <!-- كل 5 دقايق: لو حساب معين اتحط عليه pending_reconciliation
+             (بعد reconnect) بيتعالج فورًا في أول مرور، والباقي بياخد
+             دورهم بشبكة الأمان كل SAFETY_NET_MINUTES (30 دقيقة، معرّفة
+             في controllers/wa_reconciliation.py). -->
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active">True</field>
+    </record>
+</odoo>

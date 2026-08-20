@@ -321,14 +321,27 @@ class WaMessageQueue(models.Model):
             elif 'fold_state' in members._fields:
                 # Older/alternate versions with a plain fold_state field.
                 members.write({'fold_state': 'open'})
+            elif 'unpin_dt' in members._fields:
+                # Odoo 19: fold_state/_channel_fold are gone. The
+                # floating chat window is now controlled by "pinning" -
+                # unpin_dt=False (+ a fresh last_interest_dt so it sorts
+                # to the top) means the channel is open/pinned for that
+                # member, exactly what discuss.channel.channel_pin(True)
+                # does for the current user. We do it directly via write()
+                # since these are other users' member records, then
+                # broadcast the channel header on the bus so each
+                # operator's already-open web client actually pops the
+                # window open live (channel._broadcast is the same call
+                # channel_pin()/_find_or_create_chat() use for this).
+                now = fields.Datetime.now()
+                members.write({'unpin_dt': False, 'last_interest_dt': now})
+                channel._broadcast(partner_ids)
             else:
-                # Odoo 19: neither is available on discuss.channel.member
-                # anymore. There's no safe equivalent to force-open the
-                # window from here, so just skip the cosmetic pop-open
-                # instead of guessing at internal APIs.
+                # Neither the old nor the new API is available - don't
+                # guess at internal APIs, just skip the cosmetic pop-open.
                 _logger.info(
                     "Skipping WhatsApp chat auto-pop for channel %s: "
-                    "no supported fold API on this Odoo version",
+                    "no supported fold/pin API on this Odoo version",
                     channel.id,
                 )
         except Exception:
