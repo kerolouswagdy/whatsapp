@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'odoo-whatsapp-api',
-    'summary': "evolation api WhatsApp Integration",
-    'description': """Odoo Module to send WhatsApp Messages through evolation API""",
+    'summary': "evoluation api WhatsApp Integration",
+    'description': """Odoo Module to send WhatsApp Messages through evoluation apis""",
     'website': '',
     "support": "info@chatwithio.com",
     'category': 'Mail',

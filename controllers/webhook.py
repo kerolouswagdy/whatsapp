@@ -90,6 +90,25 @@ class WaWebHookMessages(models.Model):
                             wa_message[0].status = status_value
                             wa_message[0].webhook_message_ids = [(4, record.id)]
 
+            elif event == 'presence.update':
+                # "بيكتب الآن..." / "آخر ظهور" - شكل الـ payload مش موحّد
+                # بين نسخ Evolution، فبندور على القيمة في كل الاحتمالات
+                # المعروفة قبل ما نسيبها.
+                data = payload.get('data') or {}
+                remote_jid = data.get('id') or data.get('remoteJid') or ''
+                presences = data.get('presences') or {}
+                presence_state = False
+                if presences:
+                    first = next(iter(presences.values()), {}) or {}
+                    presence_state = first.get('lastKnownPresence') or first.get('presence')
+                else:
+                    presence_state = data.get('presence') or data.get('lastKnownPresence')
+                phone = self.normalize_phone(remote_jid) if remote_jid else False
+                if phone and presence_state:
+                    self.sudo()._update_wa_presence(phone, str(presence_state).lower())
+                else:
+                    _logger.info("Unhandled/unparsed WhatsApp presence.update payload=%s", data)
+
             else:
                 # Unhandled event type (connection.update, qrcode.updated, ...) - ignore.
                 if self.env.context.get('wa_developer_mode'):
@@ -268,6 +287,145 @@ class WaMessageQueue(models.Model):
             if jid == remote_jid:
                 return group.get('subject') or group.get('name') or False
         return False
+
+    def _fetch_wa_group_info(self, remote_jid):
+        """زي _fetch_wa_group_name بالظبط بس getParticipants=true - بترجع
+        الاسم/الوصف/قايمة الأعضاء لجروب معيّن، لصفحة معلومات المحادثة.
+        Best-effort زيها بالظبط - أي فشل يرجع False من غير ما يبوظ حاجة."""
+        try:
+            account = self.get_account()
+        except ValidationError:
+            return False
+        if not account.server_url or not account.instance_name or not account.api_key:
+            return False
+        try:
+            url = account._evo_instance_url("group/fetchAllGroups")
+            response = requests.get(
+                url, headers=account._evo_headers(), params={'getParticipants': 'true'}, timeout=20)
+            data = response.json() if response.content else []
+        except (requests.RequestException, ValueError):
+            return False
+        if account.developer_mode:
+            _logger.info("WhatsApp group/fetchAllGroups(participants) status=%s response=%s",
+                         response.status_code, data)
+        if response.status_code != 200 or not isinstance(data, list):
+            return False
+        for group in data:
+            jid = group.get('id') or group.get('remoteJid') or group.get('jid')
+            if jid != remote_jid:
+                continue
+            participants = []
+            for p in (group.get('participants') or []):
+                p_jid = p.get('id') or p.get('jid') or ''
+                phone = self.normalize_phone(p_jid) if (p_jid and not p_jid.endswith('@lid')) else False
+                is_admin = str(p.get('admin') or '').lower() in ('admin', 'superadmin', 'true') or bool(p.get('isAdmin'))
+                participants.append({'phone': phone, 'is_admin': is_admin})
+            return {
+                'subject': group.get('subject') or group.get('name') or False,
+                'description': group.get('desc') or group.get('description') or False,
+                'participants_count': group.get('size') or len(participants),
+                'participants': participants,
+            }
+        return False
+
+    def _fetch_wa_avatar_url(self, phone_number):
+        """POST /chat/fetchProfilePictureUrl/{instance} -> رابط صورة
+        البروفايل بتاعت الرقم ده على واتساب. Best-effort زي _fetch_wa_
+        group_name بالظبط - أي فشل (الشخص مالوش صورة بروفايل، برايفسي
+        بتاعته مقفولة، الشبكة، نسخة Evolution قديمة...) يرجع False من غير
+        ما يبوظ معالجة الرسالة."""
+        if not phone_number:
+            return False
+        try:
+            account = self.get_account()
+        except ValidationError:
+            return False
+        if not account.server_url or not account.instance_name or not account.api_key:
+            return False
+        try:
+            url = account._evo_instance_url("chat/fetchProfilePictureUrl")
+            response = requests.post(
+                url, headers=account._evo_headers(), json={'number': phone_number}, timeout=10)
+            data = response.json() if response.content else {}
+        except (requests.RequestException, ValueError):
+            return False
+        if account.developer_mode:
+            _logger.info("WhatsApp chat/fetchProfilePictureUrl(%s) status=%s response=%s",
+                         phone_number, response.status_code, data)
+        if response.status_code != 200 or not isinstance(data, dict):
+            return False
+        return data.get('profilePictureUrl') or False
+
+    def _get_or_update_wa_participant(self, phone_number, display_name):
+        """بترجّع (اسم، رابط صورة) لعضو الجروب ده - بتكاش الصورة لمدة 7
+        أيام بدل ما تجيبها من Evolution مع كل رسالة (تكلفة API calls)،
+        وبتحدّث الاسم أول ما ييجي واحد جديد (pushName ممكن يتغيّر). لو
+        الرقم مش معروف (Evolution مبعتش participant) بترجع الاسم اللي
+        جالنا لوحده من غير كاش."""
+        if not phone_number:
+            return display_name or False, False
+        Participant = self.env['wa.group.participant'].sudo()
+        company_id = self.env.company.id
+        rec = Participant.search(
+            [('phone_number', '=', phone_number), ('company_id', '=', company_id)], limit=1)
+        vals = {}
+        if display_name and (not rec or rec.display_name != display_name):
+            vals['display_name'] = display_name
+        now = fields.Datetime.now()
+        needs_avatar_refresh = not rec or not rec.avatar_fetched_date or \
+            (now - rec.avatar_fetched_date).days >= 7
+        if needs_avatar_refresh:
+            vals['avatar_url'] = self._fetch_wa_avatar_url(phone_number)
+            vals['avatar_fetched_date'] = now
+        if rec:
+            if vals:
+                rec.write(vals)
+        else:
+            vals.update({'phone_number': phone_number, 'company_id': company_id})
+            rec = Participant.create(vals)
+        resolved_name = rec.display_name or display_name
+        if not resolved_name:
+            # مفيش pushName اتبعت خالص للشخص ده - آخر محاولة: لو عنده
+            # جهة اتصال محفوظة في أودو باسمه، استخدمه بدل الرقم الخام
+            # (زي ما طلب اليوزر: الاسم لو موجود، ومش الرقم أبدًا).
+            partner = self.env['res.partner'].sudo().search(
+                ['|', ('phone', '=', phone_number), ('mobile', '=', phone_number)], limit=1)
+            resolved_name = partner.name if partner and partner.name != phone_number else False
+        return resolved_name, rec.avatar_url
+
+    def _update_wa_presence(self, phone_number, presence_state):
+        """بتسجّل آخر حالة presence وصلتنا لرقم معيّن - composing/recording
+        (بيكتب/بيسجل صوت)، available/unavailable (أونلاين/أوفلاين)،
+        paused. لو الحالة available، بنحدّث last_seen كمان."""
+        Presence = self.env['wa.conversation.presence'].sudo()
+        company_id = self.env.company.id
+        rec = Presence.search(
+            [('phone_number', '=', phone_number), ('company_id', '=', company_id)], limit=1)
+        vals = {'state': presence_state, 'updated_at': fields.Datetime.now()}
+        if presence_state == 'available':
+            vals['last_seen'] = fields.Datetime.now()
+        if rec:
+            rec.write(vals)
+        else:
+            vals.update({'phone_number': phone_number, 'company_id': company_id})
+            Presence.create(vals)
+
+    @api.model
+    def get_conversation_presence(self, phone_number):
+        """بترجع {'state': ..., 'last_seen': ...} للرقم ده - شاشة الشات
+        بتسألها كل شوية للمحادثة المفتوحة بس (شوف whatsapp_full_view.js)."""
+        rec = self.env['wa.conversation.presence'].sudo().search(
+            [('phone_number', '=', phone_number), ('company_id', '=', self.env.company.id)], limit=1)
+        if not rec:
+            return {'state': False, 'last_seen': False}
+        # composing/recording بتنتهي صلاحيتها لو معدّاش وقت من غير تحديث -
+        # واتساب نفسه بيعمل كده لو الشخص سكت من غير ما يبعت أو يقفل الشات.
+        is_stale = rec.updated_at and (fields.Datetime.now() - rec.updated_at).total_seconds() > 20
+        state = False if (rec.state in ('composing', 'recording') and is_stale) else rec.state
+        return {
+            'state': state,
+            'last_seen': fields.Datetime.to_string(rec.last_seen) if rec.last_seen else False,
+        }
 
     def _get_wa_operators(self, res_model=False):
         operators = self.env['res.users']
@@ -477,6 +635,34 @@ class WaMessageQueue(models.Model):
         if 'reactionMessage' in message:
             emoji = (message.get('reactionMessage') or {}).get('text') or ''
             return (_('تفاعل بإيموجي: %s') % emoji) if emoji else _('ألغى تفاعله بإيموجي')
+        location = message.get('locationMessage') or message.get('liveLocationMessage')
+        if location is not None:
+            lat = location.get('degreesLatitude')
+            lng = location.get('degreesLongitude')
+            label = location.get('name') or location.get('address') or ''
+            maps_link = ("https://www.google.com/maps?q=%s,%s" % (lat, lng)) if (lat and lng) else ''
+            parts = [p for p in (_('📍 موقع'), label, maps_link) if p]
+            return ' - '.join(parts)
+        contact = message.get('contactMessage')
+        if contact is not None:
+            name = contact.get('displayName') or _('جهة اتصال')
+            return _('👤 جهة اتصال: %s') % name
+        contacts_array = message.get('contactsArrayMessage')
+        if contacts_array is not None:
+            contacts = contacts_array.get('contacts') or []
+            names = [c.get('displayName') for c in contacts if c.get('displayName')]
+            if names:
+                extra = len(names) - 1
+                label = names[0] + (_(' و%d آخرين') % extra if extra > 0 else '')
+            else:
+                label = _('%d جهة اتصال') % len(contacts)
+            return _('👤 جهات اتصال: %s') % label
+        poll = message.get('pollCreationMessage') or message.get('pollCreationMessageV3')
+        if poll is not None:
+            name = poll.get('name') or _('استطلاع')
+            options = [o.get('optionName') for o in (poll.get('options') or []) if o.get('optionName')]
+            lines = [_('📊 استطلاع: %s') % name] + ['• %s' % o for o in options]
+            return '\n'.join(lines)
         media_labels = {
             'imageMessage': _('📷 صورة'),
             'videoMessage': _('🎥 فيديو'),
@@ -501,8 +687,90 @@ class WaMessageQueue(models.Model):
         real_keys = set(message.keys()) - noise_keys
         if not real_keys:
             return False
-        # نوع مش متعامل معاه أصلاً - نعرضه كنوع خام بدل ما نضيّعه بصمت.
-        return '[%s]' % next(iter(real_keys))
+        # أنواع تانية بروتوكول/داخلية بحتة - Baileys بيبعتها لأسباب زي
+        # مزامنة تصويت استطلاع، أو تعديل رسالة، أو "اتقرت" - مالهاش بابل
+        # مرئية في واتساب نفسه، فمينفعش تتعرض عندنا برضو.
+        silent_keys = {
+            'secretEncryptedMessage', 'pollUpdateMessage', 'pollEncValueMessage',
+            'keepInChatMessage', 'markChatAsReadMessage', 'editedMessage',
+            'appStateSyncKeyShareMessage',
+        }
+        if real_keys <= silent_keys:
+            return False
+        # نوع مش متعامل معاه أصلاً - بدل ما نسرّب اسم المفتاح الخام (زي
+        # "[secretEncryptedMessage]") لليوزر، نعرض نص عام مفهوم.
+        return _('⚠️ نوع رسالة غير مدعوم')
+
+    @api.model
+    def _extract_incoming_context_info(self, message):
+        """contextInfo (بيانات "الرد على رسالة") غالبًا بتتحط جوه نفس الـ
+        wrapper بتاع نوع الرسالة (extendedTextMessage.contextInfo لو نص،
+        imageMessage.contextInfo لو صورة، ...إلخ) - لكن بعض إصدارات
+        Evolution/Baileys (خصوصًا لما الرد جاي من التليفون نفسه مش من
+        Odoo) بتحطها على مستوى الرسالة كلها مباشرة (message.contextInfo)
+        من غير ما تلفها جوه نوع الرسالة. بندوّر في الاتنين قبل ما نستسلم.
+        بترجع {} لو مفيش رد."""
+        if message.get('contextInfo'):
+            return message['contextInfo']
+        candidates = [
+            message.get('extendedTextMessage'),
+            message.get('imageMessage'),
+            message.get('videoMessage'),
+            message.get('audioMessage'),
+            message.get('documentMessage'),
+            (message.get('documentWithCaptionMessage') or {}).get('message', {}).get('documentMessage'),
+            message.get('stickerMessage'),
+        ]
+        for obj in candidates:
+            if obj and obj.get('contextInfo'):
+                return obj['contextInfo']
+        return {}
+
+    @api.model
+    def _extract_quoted_preview(self, context_info):
+        """quotedMessage جوه contextInfo نسخة كاملة من الرسالة المقتبسة
+        نفسها (نفس شكل أي message عادي) - فبنعيد استخدام _extract_incoming_
+        text عليها زي أي رسالة تانية، ومقصوصة عشان تناسب مربع الاقتباس
+        الصغير. بترجع (participant_jid, preview_text) أو (False, False)."""
+        quoted_message = context_info.get('quotedMessage') if context_info else False
+        if not quoted_message:
+            return False, False
+        participant = context_info.get('participant') or False
+        media_b64, mimetype, filename, caption = self._extract_incoming_media(quoted_message)
+        text = self._extract_incoming_text(quoted_message, media_b64, filename, caption)
+        if not text:
+            text = False
+        elif len(text) > 120:
+            text = text[:117] + '...'
+        return participant, text
+
+    @api.model
+    def _apply_incoming_protocol_message(self, protocol, webhook_record):
+        """protocolMessage مش رسالة مستقلة - بتشاور على رسالة موجودة عندنا
+        بالفعل وتقول لنا نعدّلها: يا إما "اتحذفت لدى الجميع" (REVOKE) يا
+        إما "اتعدّلت" (MESSAGE_EDIT). بترجع False زي reactionMessage
+        بالظبط (مفيش بابل جديدة تتعرض في الشات، بس تعديل على القديمة)."""
+        target_wamid = (protocol.get('key') or {}).get('id')
+        if not target_wamid:
+            return False
+        original = self.sudo().search([('dialog_message_id', '=', target_wamid)], limit=1)
+        if not original:
+            return False
+        ptype = str(protocol.get('type') or '').upper()
+        if ptype in ('REVOKE', '0'):
+            original.write({'is_revoked': True})
+        elif ptype in ('MESSAGE_EDIT', '14') and protocol.get('editedMessage'):
+            new_text = self._extract_incoming_text(protocol['editedMessage'], False, False, False)
+            if new_text:
+                original.write({'message_content': new_text, 'is_edited': True})
+        else:
+            # نوع مش متعرف عليه - لوج تشخيصي زي ما عملنا مع contextInfo
+            # قبل كده، عشان لو اتكرر نقدر نظبطه بسرعة من غير تخمين.
+            _logger.info(
+                "Unhandled WhatsApp protocolMessage type=%s payload=%s",
+                protocol.get('type'), protocol,
+            )
+        return False
 
     @api.model
     def _apply_incoming_reaction(self, reaction, from_me, webhook_record):
@@ -569,6 +837,20 @@ class WaMessageQueue(models.Model):
         from_number = self.normalize_phone(remote_jid)
         message_id = key.get('id')
         message = incoming.get('message') or {}
+        # مفيش "wrapper" واحد بس - Baileys بيلف المحتوى الحقيقي جوه طبقات
+        # زي بعض (وممكن أكتر من طبقة مع بعض) في حالات زي: رسالة جاية من
+        # جهاز تاني (deviceSentMessage)، أو شات فيه "الرسائل المؤقتة"
+        # مفعّلة (ephemeralMessage)، أو رسالة "شاهدها مرة واحدة" (viewOnce
+        # /viewOnceV2). النص/الرد/الميديا الحقيقيين دايمًا جوه .message
+        # بتاع أي واحد من دول - فبنفك كل الطبقات دي واحدة ورا التانية لحد
+        # ما نوصل للمحتوى الفعلي، بدل ما نتجاهل الرسالة كلها بالغلط.
+        wrapper_keys = ('deviceSentMessage', 'ephemeralMessage',
+                        'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension')
+        for _unwrap_i in range(5):
+            wrapper = next((message[k] for k in wrapper_keys if isinstance(message.get(k), dict)), None)
+            if wrapper is None or not isinstance(wrapper.get('message'), dict):
+                break
+            message = wrapper['message']
         direction = 'outbound' if from_me else 'inbound'
         # For an individual chat, Evolution/Baileys includes the sender's
         # current WhatsApp display name as pushName on almost every event -
@@ -579,6 +861,35 @@ class WaMessageQueue(models.Model):
         # several places) doesn't need its signature changed everywhere.
         push_name = incoming.get('pushName') or False
         self = self.with_context(wa_remote_jid=remote_jid, wa_push_name=push_name)
+
+        # ------------------------------------------------------------
+        # هوية المرسل الفعلي جوه الجروب (زي واتساب بالظبط): في رسايل
+        # الجروب، Baileys بيحط الـ JID بتاع الجروب في key.remoteJid لكن
+        # الشخص اللي بعت فعليًا موجود في key.participant - وpushName هنا
+        # فعلاً اسمه هو (مش اسم الجروب، شوف _wa_display_name_from_context
+        # فوق). بنكاش اسمه/صورته في wa.group.participant عشان نعرضهم فوق
+        # كل رسالة بدل رقمه الخام، ومنعملش الحاجة دي أصلاً لغير الرسايل
+        # الواردة من جروب (شات فردي أو رسايل بعتناها إحنا مش محتاجة كده).
+        # ------------------------------------------------------------
+        is_group = '@g.us' in remote_jid
+        sender_phone = False
+        sender_name = False
+        sender_avatar_url = False
+        if is_group and not from_me:
+            # بعض إصدارات Evolution/Baileys بتحط الـ participant في مكان
+            # مختلف حسب النسخة أو نوع الرسالة (participantAlt بيظهر مع
+            # حسابات LID الجديدة، وبعض الأحداث بتحطه على مستوى الرسالة
+            # نفسها مش جوه key) - بندوّر في كل الاحتمالات المعروفة قبل ما
+            # نستسلم ونعتبره غير معروف.
+            participant_jid = (
+                key.get('participant') or key.get('participantAlt')
+                or incoming.get('participant') or incoming.get('author') or ''
+            )
+            sender_phone = self.normalize_phone(participant_jid) if participant_jid else False
+            sender_name, sender_avatar_url = self._get_or_update_wa_participant(sender_phone, push_name)
+
+        if 'protocolMessage' in message:
+            return self._apply_incoming_protocol_message(message['protocolMessage'], webhook_record)
 
         if 'reactionMessage' in message:
             return self._apply_incoming_reaction(message['reactionMessage'], from_me, webhook_record)
@@ -595,6 +906,76 @@ class WaMessageQueue(models.Model):
                 list(message.keys()),
             )
             return False
+        if not text and not media_b64:
+            # وصلنا هنا (مش noise معروف) بس النص طلع فاضي برضو - نوع رسالة
+            # مش متوقع أو طبقة wrapper تالتة مالحقناش نفكها. بنسجّلها زي ما
+            # هي (بابل فاضي بدل ما نضيّعها) بس بنحط لوج فيه شكل الرسالة
+            # الخام كامل عشان نقدر نشخّص بالظبط لو اتكررت.
+            _logger.warning(
+                "WhatsApp webhook item resolved to empty text (keys=%s) raw_message=%s",
+                list(message.keys()), message,
+            )
+
+        # ------------------------------------------------------------
+        # "الرد على رسالة" (Reply/Quote): لو الرسالة دي رد على رسالة تانية،
+        # contextInfo بيحمل نسخة كاملة من الرسالة المقتبسة + مين بعتها
+        # (مفيد خصوصًا في الجروبات). بنحلها هنا مرة واحدة ونخزن preview
+        # جاهز على الرسالة نفسها بدل ما نعيد البحث عنها كل مرة تتعرض.
+        # ------------------------------------------------------------
+        context_info = incoming.get('contextInfo') or self._extract_incoming_context_info(message)
+        quoted_wamid = context_info.get('stanzaId') or False
+        quoted_participant_jid, quoted_preview = self._extract_quoted_preview(context_info)
+        quoted_sender_name = False
+        quoted_original = False
+        if quoted_wamid:
+            quoted_original = self.sudo().search([('dialog_message_id', '=', quoted_wamid)], limit=1)
+        if quoted_participant_jid:
+            # واتساب بدأ يستخدم هوية "@lid" (خصوصية) بدل رقم التليفون
+            # الصريح في بعض الحقول - رقم زي ده مش رقم تليفون حقيقي خالص،
+            # فمينفعش نـ normalize_phone عليه أو نستخدمه في بحث/كاش زي أي
+            # رقم عادي (هيطلع رقم وهمي غلط).
+            is_lid = quoted_participant_jid.endswith('@lid')
+            if is_group and not is_lid:
+                quoted_phone = self.normalize_phone(quoted_participant_jid)
+                quoted_sender_name, _unused_avatar = self._get_or_update_wa_participant(quoted_phone, False)
+            elif not is_group:
+                # شات فردي: مفيش غير طرفين (أنا أو الشخص التاني) - وجود
+                # participant هنا (حتى بصيغة @lid) معناه عمليًا إن
+                # المقتبس مش أنا، فبنستخدم اسم جهة الاتصال بتاعة
+                # المحادثة نفسها بدل ما نحاول نفك الـ lid.
+                quoted_sender_name = self._fullview_contact_name(from_number)
+            # جروب + @lid: مقدرش أحل هويته من غير رقم حقيقي - هيتغطى
+            # تحت لو الرسالة الأصلية موجودة عندنا محليًا بالـ wamid.
+        if not quoted_sender_name and quoted_original:
+            # مفيش participant قابل للحل - غالبًا رد على رسالة إحنا
+            # بعتناها إحنا نفسنا (Baileys غالبًا بيسيب participant فاضي
+            # في الحالة دي). لو الرسالة الأصلية موجودة عندنا فعلاً،
+            # بنستخدم بياناتها الحقيقية بدل ما نسيب الاسم فاضي.
+            quoted_sender_name = _('أنت') if quoted_original.direction == 'outbound' else (quoted_original.wa_sender_name or False)
+        if not quoted_preview and quoted_original:
+            # بعض الأحداث (خصوصًا ردود متبعتة من التليفون نفسه) بتبعت
+            # contextInfo من غير نسخة quotedMessage كاملة - لو الرسالة
+            # الأصلية موجودة عندنا محليًا، بنستخدم نصها هي كـ preview.
+            quoted_preview = (quoted_original.message_content or '').strip()[:120] or False
+        if context_info:
+            _logger.info("WhatsApp reply contextInfo=%s -> wamid=%s participant=%s preview=%s",
+                         context_info, quoted_wamid, quoted_participant_jid, quoted_preview)
+
+        # الإشارة لعضو في الجروب (@mention): نص الرسالة بيوصل فيه "@<رقم>"
+        # حرفيًا، وcontextInfo.mentionedJid بيقول لنا مين الأرقام دي فعلاً
+        # - بنبني {رقم: اسم} عشان الشاشة تقدر تستبدل الرقم الخام باسم
+        # الشخص وتلوّنها، بدل ما تعرض "@201234567890" زي ما هي.
+        mentioned_map = {}
+        if is_group:
+            for jid in (context_info.get('mentionedJid') or []):
+                if not jid or jid.endswith('@lid'):
+                    continue
+                m_phone = self.normalize_phone(jid)
+                if not m_phone:
+                    continue
+                m_name, _unused_avatar = self._get_or_update_wa_participant(m_phone, False)
+                mentioned_map[m_phone] = m_name or m_phone
+
         res_model = False
         res_id = False
         lead = self.env['crm.lead'].sudo().search([('phone', '=', from_number)], limit=1, order='create_date DESC')
@@ -622,7 +1003,14 @@ class WaMessageQueue(models.Model):
             'company_id': self.env.user.company_id.id,
             'webhook_message_ids': [(4, webhook_record.id)] if webhook_record else False,
             'wa_timestamp': self._incoming_wa_timestamp(incoming),
-            'wa_is_group': '@g.us' in remote_jid,
+            'wa_is_group': is_group,
+            'wa_sender_phone': sender_phone,
+            'wa_sender_name': sender_name,
+            'wa_sender_avatar_url': sender_avatar_url,
+            'wa_quoted_wamid': quoted_wamid or False,
+            'wa_quoted_sender_name': quoted_sender_name or False,
+            'wa_quoted_preview': quoted_preview or False,
+            'wa_mentioned_json': json.dumps(mentioned_map) if mentioned_map else False,
         }
         if media_b64:
             vals.update({
@@ -1175,7 +1563,8 @@ class WaMessageQueue(models.Model):
             record.trigger_log_note = False if record.trigger_log_note else True
     trigger_log_note = fields.Boolean(compute=log_note, store=True)
 
-    def send_message(self, res_id, res_model, phone_number, text, post_to_channel=True):
+    def send_message(self, res_id, res_model, phone_number, text, post_to_channel=True,
+                      quoted=None, quoted_sender_name=False, quoted_preview=False):
         config = self.get_config()
         account = self.env['whatsapp.account'].sudo().browse(config.get('account_id'))
         country_code = account.default_country_code if account else False
@@ -1191,6 +1580,10 @@ class WaMessageQueue(models.Model):
 
         for index, candidate in enumerate(candidates):
             payload = {"number": candidate, "text": text}
+            if quoted:
+                # بتخلي واتساب يعرض الرسالة دي كرد على رسالة تانية - نفس
+                # اللي بيحصل لما ترد من التليفون بالظبط.
+                payload["quoted"] = quoted
             payload_json = json.dumps(payload)
             response = requests.post(url, json=payload, headers=headers, timeout=20)
             try:
@@ -1227,6 +1620,9 @@ class WaMessageQueue(models.Model):
             'message_content': text,
             'direction': 'outbound',
             'phone_number': self.normalize_phone(sent_number),
+            'wa_quoted_wamid': (quoted or {}).get('key', {}).get('id') or False,
+            'wa_quoted_sender_name': quoted_sender_name or False,
+            'wa_quoted_preview': quoted_preview or False,
         }
         wa = self.env['wa.message'].create(message_vals)
         if post_to_channel:
@@ -1261,7 +1657,8 @@ class WaMessageQueue(models.Model):
             return 'audio'
         return 'document'
 
-    def send_message_media(self, res_id, res_model, phone_number, attachment, caption='', post_to_channel=True):
+    def send_message_media(self, res_id, res_model, phone_number, attachment, caption='', post_to_channel=True,
+                            quoted=None, quoted_sender_name=False, quoted_preview=False):
         """Sends one ir.attachment (PDF, image, ...) as a real WhatsApp
         media message via Evolution API (POST message/sendMedia/{instance}),
         e.g. the invoice PDF attached from a record's chatter 'WhatsApp'
@@ -1294,6 +1691,8 @@ class WaMessageQueue(models.Model):
             }
             if caption:
                 payload["caption"] = caption
+            if quoted:
+                payload["quoted"] = quoted
             response = requests.post(url, json=payload, headers=headers)
             try:
                 response_data = response.json()
@@ -1336,6 +1735,9 @@ class WaMessageQueue(models.Model):
             'media_data': attachment.datas,
             'media_filename': attachment.name,
             'media_mimetype': mimetype,
+            'wa_quoted_wamid': (quoted or {}).get('key', {}).get('id') or False,
+            'wa_quoted_sender_name': quoted_sender_name or False,
+            'wa_quoted_preview': quoted_preview or False,
         }
         wa = self.env['wa.message'].create(message_vals)
         if post_to_channel:

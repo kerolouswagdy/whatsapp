@@ -92,13 +92,178 @@
                     <div class="o_wa_no_selection">اختر محادثة من القائمة لعرض الرسائل</div>
                 </t>
                 <t t-else="">
-                    <div class="o_wa_thread_header">
-                        <div class="o_wa_avatar" t-esc="initials(state.selectedName)"/>
-                        <div class="o_wa_thread_title">
+                    <div t-if="!state.selectMode" class="o_wa_thread_header">
+                        <div class="o_wa_avatar o_wa_avatar_clickable" t-esc="initials(state.selectedName)"
+                             title="معلومات المحادثة" t-on-click="openInfoPanel"/>
+                        <div class="o_wa_thread_title o_wa_thread_title_clickable" title="معلومات المحادثة"
+                             t-on-click="openInfoPanel">
                             <div class="o_wa_thread_name" t-esc="state.selectedName || state.selectedPhone"/>
-                            <div class="o_wa_thread_phone" t-esc="state.selectedPhone"/>
+                            <div t-if="presenceLabel" class="o_wa_thread_presence" t-esc="presenceLabel"/>
+                            <div t-else="" class="o_wa_thread_phone" t-esc="state.selectedPhone"/>
+                        </div>
+                        <div class="o_wa_thread_header_actions">
+                            <button type="button" class="o_wa_header_icon_btn" title="بحث في المحادثة"
+                                    t-on-click="openMsgSearch">🔍</button>
+                            <button type="button" class="o_wa_header_icon_btn" title="الصور والفيديوهات"
+                                    t-on-click="openGallery">🖼️</button>
                         </div>
                     </div>
+                    <div t-else="" class="o_wa_select_toolbar">
+                        <button type="button" class="o_wa_header_icon_btn" title="إلغاء" t-on-click="exitSelectMode">✕</button>
+                        <span class="o_wa_select_count" t-esc="selectedCount + ' محددة'"/>
+                        <div class="o_wa_select_actions">
+                            <button type="button" class="o_wa_header_icon_btn" title="تحويل"
+                                    t-att-disabled="!selectedCount" t-on-click="openForwardPanelForSelection">↪️</button>
+                            <button type="button" class="o_wa_header_icon_btn o_wa_action_danger" title="حذف"
+                                    t-att-disabled="!selectedCount" t-on-click="deleteSelected">🗑️</button>
+                        </div>
+                    </div>
+
+                    <!-- ============== بحث جوه المحادثة ============== -->
+                    <div t-if="state.msgSearch.open" class="o_wa_search_panel">
+                        <div class="o_wa_search_header">
+                            <input type="text" placeholder="ابحث في الرسايل..." autofocus="autofocus"
+                                   t-att-value="state.msgSearch.query" t-on-input="onMsgSearchInput"/>
+                            <button type="button" class="o_wa_header_icon_btn" t-on-click="closeMsgSearch">✕</button>
+                        </div>
+                        <div class="o_wa_search_results">
+                            <span t-if="state.msgSearch.loading" class="o_wa_search_hint">جاري البحث...</span>
+                            <span t-elif="state.msgSearch.query and !state.msgSearch.results.length" class="o_wa_search_hint">مفيش نتائج</span>
+                            <div t-foreach="state.msgSearch.results" t-as="r" t-key="r.id"
+                                 class="o_wa_search_result_item" t-on-click="() => this.onSearchResultClick(r.id)">
+                                <div t-if="r.sender_name" class="o_wa_search_result_sender" t-esc="r.sender_name"/>
+                                <div class="o_wa_search_result_text" t-esc="r.preview"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ============== معرض الصور والفيديوهات ============== -->
+                    <div t-if="state.gallery.open" class="o_wa_gallery_panel">
+                        <div class="o_wa_gallery_header">
+                            <span>الصور والفيديوهات</span>
+                            <button type="button" class="o_wa_header_icon_btn" t-on-click="closeGallery">✕</button>
+                        </div>
+                        <div class="o_wa_gallery_grid">
+                            <span t-if="state.gallery.loading" class="o_wa_search_hint">جاري التحميل...</span>
+                            <span t-elif="!state.gallery.items.length" class="o_wa_search_hint">مفيش صور أو فيديوهات لسه</span>
+                            <div t-foreach="state.gallery.items" t-as="item" t-key="item.id"
+                                 class="o_wa_gallery_thumb" t-on-click="() => this.onGalleryItemClick(item)">
+                                <img t-if="item.media_type === 'image'" t-att-src="mediaUrl(item)"/>
+                                <video t-else="" t-att-src="mediaUrl(item)" preload="metadata"/>
+                                <span t-if="item.media_type === 'video'" class="o_wa_gallery_video_badge">▶️</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ============== معلومات المحادثة (جهة اتصال / جروب) ============== -->
+                    <div t-if="state.infoPanel.open" class="o_wa_info_panel">
+                        <div class="o_wa_gallery_header">
+                            <span>معلومات المحادثة</span>
+                            <button type="button" class="o_wa_header_icon_btn" t-on-click="closeInfoPanel">✕</button>
+                        </div>
+                        <div t-if="state.infoPanel.loading" class="o_wa_search_hint">جاري التحميل...</div>
+                        <t t-elif="state.infoPanel.data">
+                            <div class="o_wa_info_body">
+                                <div class="o_wa_info_avatar_row">
+                                    <img t-if="state.infoPanel.data.avatar_url" class="o_wa_info_avatar"
+                                         t-att-src="state.infoPanel.data.avatar_url"/>
+                                    <div t-else="" class="o_wa_avatar o_wa_avatar_lg" t-esc="initials(state.infoPanel.data.name)"/>
+                                    <div class="o_wa_info_name" t-esc="state.infoPanel.data.name"/>
+                                    <div t-if="!state.infoPanel.data.is_group" class="o_wa_info_phone" t-esc="state.infoPanel.data.phone_number"/>
+                                    <div t-else="" class="o_wa_info_phone" t-esc="(state.infoPanel.data.participants_count || state.infoPanel.data.participants.length) + ' عضو'"/>
+                                </div>
+                                <div t-if="state.infoPanel.data.description" class="o_wa_info_description"
+                                     t-esc="state.infoPanel.data.description"/>
+                                <button type="button" class="o_wa_info_media_btn" t-on-click="openGalleryFromInfo">
+                                    🖼️ الصور والفيديوهات
+                                </button>
+                                <div t-if="state.infoPanel.data.is_group and state.infoPanel.data.participants.length" class="o_wa_info_participants">
+                                    <div t-foreach="state.infoPanel.data.participants" t-as="p" t-key="p.phone || p_index"
+                                         class="o_wa_info_participant_item">
+                                        <img t-if="p.avatar_url" class="o_wa_avatar o_wa_avatar_sm" t-att-src="p.avatar_url"/>
+                                        <div t-else="" class="o_wa_avatar o_wa_avatar_sm" t-esc="initials(p.name)"/>
+                                        <span class="o_wa_info_participant_name" t-esc="p.name"/>
+                                        <span t-if="p.is_admin" class="o_wa_info_admin_badge">أدمن</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+                        <div t-else="" class="o_wa_search_hint">تعذر تحميل المعلومات</div>
+                    </div>
+
+                    <!-- ============== إرسال موقع ============== -->
+                    <div t-if="state.locationPanel.open" class="o_wa_gallery_panel o_wa_side_form_panel">
+                        <div class="o_wa_gallery_header">
+                            <span>إرسال موقع</span>
+                            <button type="button" class="o_wa_header_icon_btn" t-on-click="closeLocationPanel">✕</button>
+                        </div>
+                        <form class="o_wa_simple_form" t-on-submit="sendLocationPanel">
+                            <button type="button" class="o_wa_geo_btn" t-att-disabled="state.locationPanel.geoLoading"
+                                    t-on-click="useCurrentLocation">
+                                <t t-if="state.locationPanel.geoLoading">جاري تحديد الموقع...</t>
+                                <t t-else="">📍 استخدم موقعي الحالي</t>
+                            </button>
+                            <div class="o_wa_form_row">
+                                <input type="text" placeholder="خط العرض" t-model="state.locationPanel.latitude"/>
+                                <input type="text" placeholder="خط الطول" t-model="state.locationPanel.longitude"/>
+                            </div>
+                            <input type="text" placeholder="اسم المكان (اختياري)" t-model="state.locationPanel.name"/>
+                            <input type="text" placeholder="العنوان (اختياري)" t-model="state.locationPanel.address"/>
+                            <button type="submit" class="o_wa_simple_submit"
+                                    t-att-disabled="!state.locationPanel.latitude or !state.locationPanel.longitude or state.locationPanel.sending">
+                                <t t-if="state.locationPanel.sending">جاري الإرسال...</t>
+                                <t t-else="">إرسال الموقع</t>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- ============== إرسال جهة اتصال ============== -->
+                    <div t-if="state.contactPanel.open" class="o_wa_gallery_panel o_wa_side_form_panel">
+                        <div class="o_wa_gallery_header">
+                            <span>إرسال جهة اتصال</span>
+                            <button type="button" class="o_wa_header_icon_btn" t-on-click="closeContactPanel">✕</button>
+                        </div>
+                        <form class="o_wa_simple_form" t-on-submit="sendContactPanel">
+                            <input type="text" placeholder="الاسم" t-model="state.contactPanel.name"/>
+                            <input type="text" placeholder="رقم التليفون" t-model="state.contactPanel.phone"/>
+                            <input type="text" placeholder="الشركة (اختياري)" t-model="state.contactPanel.organization"/>
+                            <button type="submit" class="o_wa_simple_submit"
+                                    t-att-disabled="!state.contactPanel.name or !state.contactPanel.phone or state.contactPanel.sending">
+                                <t t-if="state.contactPanel.sending">جاري الإرسال...</t>
+                                <t t-else="">إرسال جهة الاتصال</t>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- ============== إنشاء استطلاع رأي ============== -->
+                    <div t-if="state.pollPanel.open" class="o_wa_gallery_panel o_wa_side_form_panel">
+                        <div class="o_wa_gallery_header">
+                            <span>إنشاء استطلاع رأي</span>
+                            <button type="button" class="o_wa_header_icon_btn" t-on-click="closePollPanel">✕</button>
+                        </div>
+                        <form class="o_wa_simple_form" t-on-submit="sendPollPanel">
+                            <input type="text" placeholder="السؤال" t-model="state.pollPanel.question"/>
+                            <div t-foreach="state.pollPanel.options" t-as="option" t-key="option_index" class="o_wa_poll_option_row">
+                                <input type="text" t-attf-placeholder="اختيار {{option_index + 1}}"
+                                       t-att-value="option" t-on-input="(ev) => this.onPollOptionInput(option_index, ev)"/>
+                                <button type="button" class="o_wa_poll_option_remove"
+                                        t-if="state.pollPanel.options.length > 2"
+                                        t-on-click="() => this.removePollOption(option_index)">✕</button>
+                            </div>
+                            <button type="button" class="o_wa_poll_add_option"
+                                    t-if="state.pollPanel.options.length &lt; 12"
+                                    t-on-click="addPollOption">+ إضافة اختيار</button>
+                            <label class="o_wa_poll_multi_toggle">
+                                <input type="checkbox" t-model="state.pollPanel.multi"/> السماح باختيار أكتر من إجابة
+                            </label>
+                            <button type="submit" class="o_wa_simple_submit"
+                                    t-att-disabled="!state.pollPanel.question or state.pollPanel.sending">
+                                <t t-if="state.pollPanel.sending">جاري الإرسال...</t>
+                                <t t-else="">إرسال الاستطلاع</t>
+                            </button>
+                        </form>
+                    </div>
+
                     <div class="o_wa_messages" t-ref="messagesEnd">
                         <div class="o_wa_load_older">
                             <button t-if="!state.noMoreOlder" type="button" class="o_wa_load_older_btn"
@@ -115,8 +280,35 @@
                             </div>
                             <div t-else=""
                                  class="o_wa_bubble_row"
-                                 t-att-class="{ 'o_wa_out': msg.from_me, 'o_wa_in': !msg.from_me }">
-                            <div class="o_wa_bubble" t-on-click="(ev) => this.onBubbleClick(msg, ev)">
+                                 t-att-data-msg-id="msg.id"
+                                 t-att-class="{ 'o_wa_out': msg.from_me, 'o_wa_in': !msg.from_me,
+                                                'o_wa_group_row': state.selectedIsGroup and !msg.from_me,
+                                                'o_wa_select_mode_row': state.selectMode }">
+                            <span t-if="state.selectMode" class="o_wa_select_checkbox"
+                                  t-att-class="{ 'o_wa_select_checked': state.selectedIds[msg.id] }"/>
+                            <!-- صورة/حرف مرسل الرسالة - جروبات بس، وفوق أول رسالة في كل مجموعة رسايل متتالية من نفس الشخص (زي واتساب) -->
+                            <t t-if="state.selectedIsGroup and !msg.from_me">
+                                <img t-if="msg.show_sender and msg.sender_avatar_url" class="o_wa_sender_avatar"
+                                     t-att-src="msg.sender_avatar_url"/>
+                                <div t-elif="msg.show_sender and msg.sender_name" class="o_wa_sender_avatar o_wa_sender_avatar_fallback"
+                                     t-att-style="'background-color:' + senderColor(msg.sender_name)"
+                                     t-esc="initials(msg.sender_name)"/>
+                                <div t-else="" class="o_wa_sender_avatar_spacer"/>
+                            </t>
+                            <div class="o_wa_bubble"
+                                 t-att-class="{ 'o_wa_bubble_group_tinted': state.selectedIsGroup and !msg.from_me and msg.sender_name }"
+                                 t-att-style="(state.selectedIsGroup and !msg.from_me and msg.sender_name) ? ('border-inline-start-color:' + senderColor(msg.sender_name)) : ''"
+                                 t-on-click="(ev) => this.onBubbleClick(msg, ev)">
+                                <div t-if="msg.show_sender and msg.sender_name" class="o_wa_sender_name"
+                                     t-att-style="'color:' + senderColor(msg.sender_name)" t-esc="msg.sender_name"/>
+                                <span t-if="msg.is_revoked" class="o_wa_bubble_revoked">🚫 تم حذف هذه الرسالة</span>
+                                <t t-else="">
+                                <div t-if="msg.quoted" class="o_wa_quoted_box" t-on-click="(ev) => this.jumpToQuoted(ev, msg.quoted.local_id)">
+                                    <div class="o_wa_quoted_sender"
+                                         t-att-style="msg.quoted.sender_name ? ('color:' + senderColor(msg.quoted.sender_name)) : ''"
+                                         t-esc="msg.quoted.sender_name || 'رسالة'"/>
+                                    <div class="o_wa_quoted_text" t-esc="msg.quoted.preview || '📎 وسائط'"/>
+                                </div>
                                 <img t-if="msg.has_media and msg.media_type === 'image' and !state.failedImageIds.includes(msg.id)"
                                      class="o_wa_bubble_media_image" t-att-src="mediaUrl(msg)"
                                      t-on-error="() => this.onImageError(msg.id)"/>
@@ -137,9 +329,15 @@
                                     <span class="o_wa_file_icon" t-esc="fileIcon(msg.media_type)"/>
                                     <span class="o_wa_file_name" t-esc="msg.media_filename or 'ملف مرفق'"/>
                                 </a>
-                                <span t-if="msg.body" t-esc="msg.body"/>
+                                <span t-if="msg.body" t-out="linkify(msg.body, msg.mentions)"/>
                                 <span t-elif="!msg.has_media" class="o_wa_bubble_unsupported">رسالة غير مدعومة</span>
-                                <span class="o_wa_bubble_time" t-esc="formatBubbleTime(msg.date)"/>
+                                <span t-if="msg.is_edited" class="o_wa_bubble_edited">(معدّلة)</span>
+                                </t>
+                                <span class="o_wa_bubble_meta">
+                                    <span class="o_wa_bubble_time" t-esc="formatBubbleTime(msg.date)"/>
+                                    <span t-if="msg.from_me" class="o_wa_status_tick" t-att-class="{ 'o_wa_status_read': msg.state === 'read' }"
+                                          t-att-title="statusLabel(msg.state)" t-esc="statusTickIcon(msg.state)"/>
+                                </span>
                                 <div t-if="msg.reactions and msg.reactions.length" class="o_wa_reactions_badge">
                                     <span t-foreach="msg.reactions" t-as="r" t-key="r.emoji"
                                           class="o_wa_reaction_pill" t-att-class="{ 'o_wa_reaction_mine': r.from_me }"
@@ -170,11 +368,25 @@
                                   t-esc="emoji"/>
                         </div>
                         <div class="o_wa_action_menu_items">
+                            <div class="o_wa_action_menu_item" t-on-click="startReply">
+                                <span class="o_wa_action_icon">↩️</span> رد (Reply)
+                            </div>
                             <div class="o_wa_action_menu_item" t-on-click="openForwardPanel">
                                 <span class="o_wa_action_icon">↪️</span> تحويل (Forward)
                             </div>
+                            <div class="o_wa_action_menu_item" t-on-click="enterSelectMode">
+                                <span class="o_wa_action_icon">☑️</span> تحديد (Select)
+                            </div>
                             <div t-if="actionMenuMessage.body" class="o_wa_action_menu_item" t-on-click="copyMessage">
                                 <span class="o_wa_action_icon">📋</span> نسخ
+                            </div>
+                            <div t-if="actionMenuMessage.from_me and actionMenuMessage.body and !actionMenuMessage.is_revoked"
+                                 class="o_wa_action_menu_item" t-on-click="startEditMessage">
+                                <span class="o_wa_action_icon">✏️</span> تعديل
+                            </div>
+                            <div t-if="actionMenuMessage.from_me and !actionMenuMessage.is_revoked"
+                                 class="o_wa_action_menu_item o_wa_action_danger" t-on-click="deleteForEveryone">
+                                <span class="o_wa_action_icon">🗑️</span> حذف لدى الجميع
                             </div>
                             <div class="o_wa_action_menu_item o_wa_action_danger" t-on-click="deleteLocally">
                                 <span class="o_wa_action_icon">🗑️</span> حذف عندي بس
@@ -199,9 +411,34 @@
                         </form>
                     </div>
 
+                    <!-- شريط "بترد على..." - بيظهر فوق مربع الكتابة لما تختار "رد" من قايمة رسالة -->
+                    <div t-if="state.replyTo" class="o_wa_reply_preview">
+                        <div class="o_wa_reply_preview_bar"/>
+                        <div class="o_wa_reply_preview_body">
+                            <div class="o_wa_reply_preview_sender" t-esc="state.replyTo.sender_name"/>
+                            <div class="o_wa_reply_preview_text" t-esc="state.replyTo.preview"/>
+                        </div>
+                        <button type="button" class="o_wa_reply_preview_close" title="إلغاء الرد"
+                                t-on-click="cancelReply">✕</button>
+                    </div>
+
+                    <!-- شريط تعديل رسالة صادرة بعتناها احنا -->
+                    <div t-if="state.editPanel.open" class="o_wa_edit_bar">
+                        <div class="o_wa_edit_bar_icon">✏️</div>
+                        <form class="o_wa_edit_bar_form" t-on-submit="saveEditMessage">
+                            <input type="text" t-model="state.editPanel.text" autofocus="autofocus"/>
+                            <button type="submit" class="o_wa_edit_bar_save"
+                                    t-att-disabled="!state.editPanel.text or state.editPanel.sending">✓</button>
+                            <button type="button" class="o_wa_edit_bar_cancel" title="إلغاء التعديل"
+                                    t-on-click="cancelEditMessage">✕</button>
+                        </form>
+                    </div>
+
                     <form class="o_wa_composer" t-on-submit="sendMessage">
                         <input type="file" t-ref="fileInput" class="o_wa_file_input"
                                t-on-change="onFileChange"/>
+                        <input type="file" t-ref="stickerFileInput" class="o_wa_file_input" accept="image/*"
+                               t-on-change="onStickerFileChange"/>
 
                         <!-- شريط التسجيل: بيظهر بدل باقي الـ composer وإنت بتسجل -->
                         <t t-if="state.recording.active">
@@ -216,8 +453,36 @@
                                     t-on-click="stopRecording">⏹️</button>
                         </t>
                         <t t-else="">
-                            <button type="button" class="o_wa_attach_btn" title="إرفاق صورة أو ملف"
-                                    t-on-click="onAttachClick">📎</button>
+                            <div class="o_wa_attach_wrapper">
+                                <button type="button" class="o_wa_attach_btn" title="إرفاق"
+                                        t-on-click="toggleAttachMenu">📎</button>
+                                <div t-if="state.attachMenu.open" class="o_wa_attach_menu">
+                                    <div class="o_wa_attach_menu_item" t-on-click="onAttachMediaClick">
+                                        <span class="o_wa_attach_menu_icon">🖼️</span> صورة / فيديو / ملف
+                                    </div>
+                                    <div class="o_wa_attach_menu_item" t-on-click="onAttachStickerClick">
+                                        <span class="o_wa_attach_menu_icon">😀</span> ستيكر
+                                    </div>
+                                    <div class="o_wa_attach_menu_item" t-on-click="openLocationPanel">
+                                        <span class="o_wa_attach_menu_icon">📍</span> موقع
+                                    </div>
+                                    <div class="o_wa_attach_menu_item" t-on-click="openContactPanel">
+                                        <span class="o_wa_attach_menu_icon">👤</span> جهة اتصال
+                                    </div>
+                                    <div class="o_wa_attach_menu_item" t-on-click="openPollPanel">
+                                        <span class="o_wa_attach_menu_icon">📊</span> استطلاع رأي
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="o_wa_emoji_wrapper">
+                                <button type="button" class="o_wa_emoji_btn" title="إيموجي"
+                                        t-on-click="toggleEmojiPicker">😊</button>
+                                <div t-if="state.emojiPicker.open" class="o_wa_composer_emoji_panel">
+                                    <span t-foreach="composerEmojis" t-as="emoji" t-key="emoji"
+                                          class="o_wa_composer_emoji" t-on-click="() => this.insertEmoji(emoji)"
+                                          t-esc="emoji"/>
+                                </div>
+                            </div>
                             <div class="o_wa_composer_main">
                                 <div t-if="state.attachment" class="o_wa_attachment_preview">
                                     <img t-if="state.attachmentPreviewUrl" t-att-src="state.attachmentPreviewUrl"/>
@@ -228,7 +493,7 @@
                                     <button type="button" class="o_wa_attachment_remove"
                                             t-on-click="clearAttachment">✕</button>
                                 </div>
-                                <input type="text" placeholder="اكتب رسالة أو الصق لينك..."
+                                <input type="text" placeholder="اكتب رسالة أو الصق لينك..." t-ref="draftInput"
                                        t-model="state.draft" t-on-keydown="onDraftKeydown"/>
                             </div>
                             <button t-if="!hasDraftOrAttachment" type="button" class="o_wa_mic_btn"

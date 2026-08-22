@@ -10,3 +10,5 @@ access_wa_message_template_button,access.wa_message_template_button,model_wa_mes
 access_wa_qr_code,access.wa_qr_code,model_wa_qr_code,base.group_user,1,1,1,1
 access_whatsapp_account_connect_wizard,access.whatsapp_account_connect_wizard,model_whatsapp_account_connect_wizard,base.group_user,1,1,1,1
 access_wa_conversation_favorite,access.wa_conversation_favorite,model_wa_conversation_favorite,base.group_user,1,1,1,1
+access_wa_group_participant,access.wa_group_participant,model_wa_group_participant,base.group_user,1,1,1,1
+access_wa_conversation_presence,access.wa_conversation_presence,model_wa_conversation_presence,base.group_user,1,1,1,1

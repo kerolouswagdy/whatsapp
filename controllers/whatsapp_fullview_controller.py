@@ -41,17 +41,98 @@ class WhatsAppFullViewController(http.Controller):
         return request.env['wa.message'].sudo().get_conversations()
 
     @http.route('/whatsapp/fullview/messages', type='jsonrpc', auth='user')
-    def fullview_messages(self, phone_number, after_id=0, before_id=0, **kwargs):
+    def fullview_messages(self, phone_number, after_id=0, before_id=0, around_id=0, **kwargs):
         return request.env['wa.message'].sudo().get_conversation_messages(
-            phone_number, int(after_id or 0), int(before_id or 0))
+            phone_number, int(after_id or 0), int(before_id or 0), around_id=int(around_id or 0))
+
+    @http.route('/whatsapp/fullview/search', type='jsonrpc', auth='user')
+    def fullview_search(self, phone_number, query, **kwargs):
+        return request.env['wa.message'].sudo().search_conversation_messages(phone_number, query)
+
+    @http.route('/whatsapp/fullview/media_gallery', type='jsonrpc', auth='user')
+    def fullview_media_gallery(self, phone_number, **kwargs):
+        return request.env['wa.message'].sudo().get_conversation_media(phone_number)
+
+    @http.route('/whatsapp/fullview/info', type='jsonrpc', auth='user')
+    def fullview_info(self, phone_number, **kwargs):
+        return request.env['wa.message'].sudo().get_conversation_info(phone_number)
 
     @http.route('/whatsapp/fullview/send', type='jsonrpc', auth='user')
-    def fullview_send(self, phone_number, body, **kwargs):
-        return request.env['wa.message'].sudo().send_from_fullview(phone_number, body)
+    def fullview_send(self, phone_number, body, reply_to_message_id=False, **kwargs):
+        return request.env['wa.message'].sudo().send_from_fullview(phone_number, body, reply_to_message_id)
 
     @http.route('/whatsapp/fullview/mark_read', type='jsonrpc', auth='user')
     def fullview_mark_read(self, phone_number, **kwargs):
-        return request.env['wa.message'].sudo().mark_conversation_read(phone_number)
+        # local (badge أخضر جوانا) + فعليًا عند العميل (التيك الأزرق).
+        # الـ WhatsApp call بتتعمل best-effort - لو فشلت (سيرفر واقع
+        # مثلًا)، البادچ المحلي بيتحدّث برضو ومفيش استثناء بيتطلع للفرونت.
+        result = request.env['wa.message'].sudo().mark_conversation_read(phone_number)
+        try:
+            request.env['wa.message'].sudo().mark_read_on_whatsapp(phone_number)
+        except Exception:
+            _logger.exception("Failed marking WhatsApp messages as read (non-blocking) for %s", phone_number)
+        return result
+
+    @http.route('/whatsapp/fullview/typing', type='jsonrpc', auth='user')
+    def fullview_typing(self, phone_number, state='composing', **kwargs):
+        return request.env['wa.message'].sudo().send_typing_from_fullview(phone_number, state)
+
+    @http.route('/whatsapp/fullview/send_location', type='jsonrpc', auth='user')
+    def fullview_send_location(self, phone_number, latitude, longitude, name='', address='', **kwargs):
+        return request.env['wa.message'].sudo().send_location_from_fullview(
+            phone_number, latitude, longitude, name, address)
+
+    @http.route('/whatsapp/fullview/send_contact', type='jsonrpc', auth='user')
+    def fullview_send_contact(self, phone_number, contact_name, contact_phone, organization='', **kwargs):
+        return request.env['wa.message'].sudo().send_contact_from_fullview(
+            phone_number, contact_name, contact_phone, organization)
+
+    @http.route('/whatsapp/fullview/send_poll', type='jsonrpc', auth='user')
+    def fullview_send_poll(self, phone_number, question, options, selectable_count=1, **kwargs):
+        return request.env['wa.message'].sudo().send_poll_from_fullview(
+            phone_number, question, options, selectable_count)
+
+    @http.route('/whatsapp/fullview/edit_message', type='jsonrpc', auth='user')
+    def fullview_edit_message(self, message_id, new_text, **kwargs):
+        return request.env['wa.message'].sudo().edit_message_from_fullview(int(message_id), new_text)
+
+    @http.route('/whatsapp/fullview/delete_everyone', type='jsonrpc', auth='user')
+    def fullview_delete_everyone(self, message_id, **kwargs):
+        return request.env['wa.message'].sudo().delete_everyone_from_fullview(int(message_id))
+
+    @http.route('/whatsapp/fullview/send_sticker', type='http', auth='user',
+                methods=['POST'], csrf=False)
+    def fullview_send_sticker(self, phone_number, **kwargs):
+        upload = request.httprequest.files.get('file')
+        if not upload or not upload.filename:
+            return self._json_response({'ok': False, 'error': 'file is required'}, status=400)
+        try:
+            msg = request.env['wa.message'].sudo().send_sticker_from_fullview(phone_number, upload)
+        except ValidationError as e:
+            return self._json_response({'ok': False, 'error': str(e)}, status=400)
+        except Exception:
+            _logger.exception("Failed to send WhatsApp sticker from fullview")
+            return self._json_response({'ok': False, 'error': 'internal_error'}, status=500)
+        return self._json_response({'ok': True, 'message': msg})
+
+    @http.route('/whatsapp/fullview/send_voice_note', type='http', auth='user',
+                methods=['POST'], csrf=False)
+    def fullview_send_voice_note(self, phone_number, **kwargs):
+        upload = request.httprequest.files.get('file')
+        if not upload or not upload.filename:
+            return self._json_response({'ok': False, 'error': 'file is required'}, status=400)
+        try:
+            msg = request.env['wa.message'].sudo().send_voice_note_from_fullview(phone_number, upload)
+        except ValidationError as e:
+            return self._json_response({'ok': False, 'error': str(e)}, status=400)
+        except Exception:
+            _logger.exception("Failed to send WhatsApp voice note from fullview")
+            return self._json_response({'ok': False, 'error': 'internal_error'}, status=500)
+        return self._json_response({'ok': True, 'message': msg})
+
+    @http.route('/whatsapp/fullview/presence', type='jsonrpc', auth='user')
+    def fullview_presence(self, phone_number, **kwargs):
+        return request.env['wa.message'].sudo().get_conversation_presence(phone_number)
 
     @http.route('/whatsapp/fullview/toggle_favorite', type='jsonrpc', auth='user')
     def fullview_toggle_favorite(self, phone_number, **kwargs):
@@ -75,14 +156,15 @@ class WhatsAppFullViewController(http.Controller):
 
     @http.route('/whatsapp/fullview/send_media', type='http', auth='user',
                 methods=['POST'], csrf=False)
-    def fullview_send_media(self, phone_number, caption='', **kwargs):
+    def fullview_send_media(self, phone_number, caption='', reply_to_message_id=False, **kwargs):
         """multipart/form-data (مش jsonrpc) عشان نقدر نبعت ملف حقيقي -
         الـ JS بيستخدم fetch() + FormData هنا بدل rpc()."""
         upload = request.httprequest.files.get('file')
         if not upload or not upload.filename:
             return self._json_response({'ok': False, 'error': 'file is required'}, status=400)
         try:
-            msg = request.env['wa.message'].sudo().send_media_from_fullview(phone_number, upload, caption or '')
+            msg = request.env['wa.message'].sudo().send_media_from_fullview(
+                phone_number, upload, caption or '', reply_to_message_id)
         except ValidationError as e:
             return self._json_response({'ok': False, 'error': str(e)}, status=400)
         except Exception:

@@ -40,6 +40,37 @@ class WaMessageFullView(models.Model):
     # يشيل الـ suffix)، عشان تبويب "Groups" في شاشة الشات يقدر يفلتر عليه.
     wa_is_group = fields.Boolean(default=False, index=True)
 
+    # حذف "لدى الجميع" وتعديل الرسالة - Baileys/واتساب بيبعتهم كـ
+    # protocolMessage بيشاور على wamid رسالة موجودة عندنا بالفعل، مش
+    # رسالة جديدة. شوف _process_incoming_protocol_message في webhook.py.
+    is_revoked = fields.Boolean(default=False, index=True,
+                                 help="اتحذفت 'لدى الجميع' من الطرف اللي بعتها.")
+    is_edited = fields.Boolean(default=False,
+                                help="النص الحالي هو نسخة معدّلة من الأصل.")
+
+    # هوية المرسل الفعلي جوه الجروب - مش المستخدمة في شات فردي (هناك اسم
+    # المحادثة نفسها كفاية). بتتاخد وقت استلام الرسالة من key.participant
+    # (Baileys بيحطه للرسايل الجاية من جروب بس) - شوف _process_incoming_
+    # message. مخزّنة على كل رسالة على حدة (denormalized) عشان لو الشخص
+    # غيّر اسمه بعدين، الرسايل القديمة تفضل زي ما كانت وقتها بالظبط، زي ما
+    # واتساب نفسه بيعمل.
+    wa_sender_phone = fields.Char(index=True)
+    wa_sender_name = fields.Char()
+    wa_sender_avatar_url = fields.Char()
+
+    # "الرد على رسالة" (Reply/Quote) - snapshot جاهز بدل ما نلف نبحث عن
+    # الرسالة الأصلية كل مرة تتعرض شاشة الشات. wa_quoted_wamid هو الـ wamid
+    # بتاع الرسالة المقتبسة (contextInfo.stanzaId) - بيتخزن حتى لو الرسالة
+    # الأصلية مش موجودة عندنا محليًا، لأن المحتوى نفسه بييجي جاهز جوه
+    # contextInfo.quotedMessage مش محتاج نلاقي السطر الأصلي أصلاً.
+    wa_quoted_wamid = fields.Char(index=True)
+    wa_quoted_sender_name = fields.Char()
+    wa_quoted_preview = fields.Char()
+
+    # {رقم: اسم} للأشخاص اللي اتعمللهم @mention جوه الرسالة دي (جروبات
+    # بس) - JSON string عشان مفيش fields.Json بسيط في كل نسخ أودو.
+    wa_mentioned_json = fields.Char()
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -82,6 +113,19 @@ class WaMessageFullView(models.Model):
         return list(grouped.values())
 
     def _fullview_message_dict(self, m):
+        if m.is_revoked:
+            # الرسالة اتحذفت "لدى الجميع" - زي واتساب بالظبط، بنعرض
+            # سطر placeholder بدل المحتوى الأصلي (اللي أصلاً ممكن نكون
+            # مسحناه)، من غير ميديا ولا ردود فعل.
+            return {
+                'id': m.id, 'body': False, 'is_revoked': True, 'is_edited': False,
+                'from_me': m.direction == 'outbound',
+                'date': fields.Datetime.to_string(m.wa_timestamp or m.create_date),
+                'state': m.status, 'has_media': False, 'media_type': False,
+                'media_filename': False, 'reactions': [], 'can_forward': False,
+                'sender_name': m.wa_sender_name or False, 'sender_avatar_url': m.wa_sender_avatar_url or False,
+                'quoted': False,
+            }
         body = (m.message_content or '').strip()
         media_type = False
         if m.media_data:
@@ -97,6 +141,8 @@ class WaMessageFullView(models.Model):
         return {
             'id': m.id,
             'body': body,
+            'is_revoked': False,
+            'is_edited': m.is_edited,
             'from_me': m.direction == 'outbound',
             'date': fields.Datetime.to_string(m.wa_timestamp or m.create_date),
             'state': m.status,
@@ -105,6 +151,27 @@ class WaMessageFullView(models.Model):
             'media_filename': m.media_filename if m.media_data else False,
             'reactions': self._reactions_for_widget(m),
             'can_forward': bool(body or m.media_data),
+            # اسم/صورة المرسل - مليانين بس لرسايل الجروبات الواردة (شوف
+            # wa_sender_phone فوق)؛ False في الشات الفردي أو للرسايل
+            # الصادرة، فالفرونت بيعرف يقرر إنه يعرض الاسم/الصورة دول ولا لأ.
+            'sender_name': m.wa_sender_name or False,
+            'sender_avatar_url': m.wa_sender_avatar_url or False,
+            # الرسالة المقتبسة (رد) - False لو الرسالة دي مش رد على حاجة.
+            # الشرط مبني على وجود preview أو sender_name فعليًا، مش على
+            # wa_quoted_wamid بس - بعض إصدارات Evolution ممكن تبعت
+            # contextInfo من غير stanzaId واضح لكن يكون معانا preview/اسم
+            # سليمين برضو، فمش عايزين نضيّعهم.
+            'quoted': ({
+                'sender_name': m.wa_quoted_sender_name or False,
+                'preview': m.wa_quoted_preview or False,
+                # بيتحل هنا لو الرسالة الأصلية موجودة عندنا محليًا - عشان
+                # الدوس على مربع الاقتباس يودّي المستخدم لها في الشاشة.
+                'local_id': (self.sudo().search([('dialog_message_id', '=', m.wa_quoted_wamid)], limit=1).id
+                             if m.wa_quoted_wamid else False),
+            } if (m.wa_quoted_wamid or m.wa_quoted_sender_name or m.wa_quoted_preview) else False),
+            # {رقم: اسم} لأي @mention جوه نص الرسالة - الفرونت بيستبدل
+            # "@<رقم>" باسم الشخص ويلوّنها.
+            'mentions': (json.loads(m.wa_mentioned_json) if m.wa_mentioned_json else {}),
         }
 
     # ------------------------------------------------------------------
@@ -167,7 +234,7 @@ class WaMessageFullView(models.Model):
         return True
 
     @api.model
-    def get_conversation_messages(self, phone_number, after_id=0, before_id=0, limit=50):
+    def get_conversation_messages(self, phone_number, after_id=0, before_id=0, limit=50, around_id=0):
         """- after_id: polling عادي، كل رسالة جديدة بعد آخر واحدة عندي (زي
           ما كان قبل كده، من غير حد أقصى - نادرًا ما تيجي أكتر من كام
           رسالة كل poll).
@@ -192,10 +259,118 @@ class WaMessageFullView(models.Model):
             messages = self.sudo().search(domain + [('id', '<', int(before_id))],
                                            order='wa_timestamp desc, id desc', limit=int(limit))
             messages = messages[::-1]
+        elif around_id:
+            # "روح للرسالة دي" - من نتيجة بحث أو من مربع رد لرسالة مش
+            # محمّلة في الشاشة حاليًا. بنجيب نص العدد قبلها ونص بعدها
+            # (شاملة هي) عشان تبان في النص لما نعمل scroll ليها.
+            target = self.sudo().browse(int(around_id))
+            if not target.exists() or target.phone_number != phone_number:
+                return []
+            half = max(1, int(limit) // 2)
+            older = self.sudo().search(domain + [('id', '<', target.id)],
+                                        order='wa_timestamp desc, id desc', limit=half)
+            newer = self.sudo().search(domain + [('id', '>=', target.id)],
+                                        order='wa_timestamp asc, id asc', limit=half)
+            messages = older[::-1] + newer
         else:
             messages = self.sudo().search(domain, order='wa_timestamp desc, id desc', limit=int(limit))
             messages = messages[::-1]
         return [self._fullview_message_dict(m) for m in messages]
+
+    @api.model
+    def search_conversation_messages(self, phone_number, query, limit=30):
+        """بحث نصي بسيط جوه محادثة واحدة - بيرجع preview مختصر لكل نتيجة
+        عشان تبان في panel البحث، والدوس عليها بيودّي لمكانها فعليًا
+        (عن طريق get_conversation_messages(around_id=...))."""
+        query = (query or '').strip()
+        if not query or len(query) < 2:
+            return []
+        domain = [('company_id', '=', self.env.company.id), ('phone_number', '=', phone_number),
+                  ('is_deleted_locally', '=', False), ('is_revoked', '=', False),
+                  ('message_content', 'ilike', query)]
+        messages = self.sudo().search(domain, order='wa_timestamp desc, id desc', limit=int(limit))
+        results = []
+        for m in messages:
+            body = (m.message_content or '').strip()
+            results.append({
+                'id': m.id,
+                'preview': body[:140],
+                'date': fields.Datetime.to_string(m.wa_timestamp or m.create_date),
+                'from_me': m.direction == 'outbound',
+                'sender_name': m.wa_sender_name or False,
+            })
+        return results
+
+    @api.model
+    def get_conversation_media(self, phone_number, limit=60):
+        """كل الصور والفيديوهات بتاعة محادثة معيّنة - عشان معرض الميديا.
+        الصوت والمستندات مش بيدخلوا هنا (مالهومش قيمة بصرية في شبكة
+        thumbnails زي الصور/الفيديوهات)."""
+        domain = [('company_id', '=', self.env.company.id), ('phone_number', '=', phone_number),
+                  ('is_deleted_locally', '=', False), ('media_data', '!=', False)]
+        messages = self.sudo().search(domain, order='wa_timestamp desc, id desc', limit=int(limit))
+        results = []
+        for m in messages:
+            media_type = self._wa_media_type(m.media_mimetype)
+            if media_type not in ('image', 'video'):
+                continue
+            results.append({
+                'id': m.id,
+                'media_type': media_type,
+                'date': fields.Datetime.to_string(m.wa_timestamp or m.create_date),
+            })
+        return results
+
+    @api.model
+    def get_conversation_info(self, phone_number):
+        """بيانات صفحة معلومات المحادثة - اسم/رقم/صورة لشات فردي، أو
+        اسم/وصف/أعضاء لجروب. بتحاول تجيب بيانات حقيقية من Evolution
+        (best-effort)، وبترجع أقل حاجة ممكنة (بس الاسم المحلي) لو فشلت،
+        من غير ما توقع خطأ يبوّظ فتح الپانل."""
+        msg = self.sudo().search(
+            [('company_id', '=', self.env.company.id), ('phone_number', '=', phone_number)],
+            limit=1, order='id desc')
+        is_group = bool(msg.wa_is_group) if msg else False
+        contact_name = self._fullview_contact_name(phone_number)
+        if not is_group:
+            avatar_url = self._fetch_wa_avatar_url(phone_number)
+            return {
+                'is_group': False,
+                'name': contact_name,
+                'phone_number': phone_number,
+                'avatar_url': avatar_url,
+                'description': False,
+                'participants_count': 0,
+                'participants': [],
+            }
+        remote_jid = "%s@g.us" % phone_number
+        info = self._fetch_wa_group_info(remote_jid)
+        Participant = self.env['wa.group.participant'].sudo()
+        participants = []
+        for p in ((info or {}).get('participants') or []):
+            name = False
+            avatar = False
+            if p.get('phone'):
+                rec = Participant.search(
+                    [('phone_number', '=', p['phone']), ('company_id', '=', self.env.company.id)], limit=1)
+                if rec:
+                    name = rec.display_name
+                    avatar = rec.avatar_url
+            participants.append({
+                'name': name or p.get('phone') or _('عضو'),
+                'phone': p.get('phone') or False,
+                'avatar_url': avatar,
+                'is_admin': p.get('is_admin', False),
+            })
+        return {
+            'is_group': True,
+            'name': (info.get('subject') if info else False) or contact_name,
+            'phone_number': phone_number,
+            'avatar_url': False,
+            'description': (info.get('description') if info else False),
+            'participants_count': (info.get('participants_count') if info else len(participants)),
+            'participants': participants,
+        }
 
     @api.model
     def mark_conversation_read(self, phone_number):
@@ -207,15 +382,52 @@ class WaMessageFullView(models.Model):
         return True
 
     @api.model
-    def send_from_fullview(self, phone_number, body):
+    def _build_quoted_payload(self, reply_to_message_id):
+        """بترجع (quoted_لـ Evolution API, اسم صاحب الرسالة الأصلية, preview)
+        من رسالة محلية عايزين نرد عليها من شاشة الشات - أو (None, False,
+        False) لو مفيش رد. الشكل اللي Evolution محتاجاه لـ quoted هو نفس
+        شكل key/message العادي بتاع أي رسالة."""
+        if not reply_to_message_id:
+            return None, False, False
+        original = self.sudo().browse(int(reply_to_message_id))
+        if not original.exists() or not original.dialog_message_id:
+            return None, False, False
+        domain = 'g.us' if original.wa_is_group else 's.whatsapp.net'
+        remote_jid = "%s@%s" % (original.phone_number, domain)
+        quoted = {
+            'key': {
+                'remoteJid': remote_jid,
+                'fromMe': original.direction == 'outbound',
+                'id': original.dialog_message_id,
+            },
+            'message': {'conversation': original.message_content or ''},
+        }
+        if original.direction == 'outbound':
+            sender_name = _('أنت')
+        else:
+            sender_name = original.wa_sender_name or self._fullview_contact_name(original.phone_number)
+        preview = (original.message_content or '').strip()
+        if len(preview) > 120:
+            preview = preview[:117] + '...'
+        if not preview and original.media_data:
+            preview = _('📎 وسائط')
+        return quoted, sender_name, (preview or False)
+
+    @api.model
+    def send_from_fullview(self, phone_number, body, reply_to_message_id=False):
         """بتستخدم send_message() الأصلي بتاعك - post_to_channel=False عشان
-        الرسالة تتبعت فعليًا من غير ما يتعمل discuss.channel."""
+        الرسالة تتبعت فعليًا من غير ما يتعمل discuss.channel. لو
+        reply_to_message_id موجود، بتتبعت كرد على الرسالة دي (زي ما بتعمل
+        من التليفون بالظبط)."""
+        quoted, quoted_sender_name, quoted_preview = self._build_quoted_payload(reply_to_message_id)
         wa = self.sudo().send_message(res_id=False, res_model=False, phone_number=phone_number,
-                                       text=body, post_to_channel=False)
+                                       text=body, post_to_channel=False,
+                                       quoted=quoted, quoted_sender_name=quoted_sender_name,
+                                       quoted_preview=quoted_preview)
         return self._fullview_message_dict(wa)
 
     @api.model
-    def send_media_from_fullview(self, phone_number, upload, caption=''):
+    def send_media_from_fullview(self, phone_number, upload, caption='', reply_to_message_id=False):
         """بتستخدم send_message_media() الأصلي بتاعك (نفس اللي زرار
         'WhatsApp' في الـ chatter بيستخدمه) عشان تبعت صورة/ملف (PDF،
         صور، مستند فيه لينك تسجيل...) فعليًا عن طريق Evolution API."""
@@ -230,6 +442,7 @@ class WaMessageFullView(models.Model):
             'datas': base64.b64encode(raw),
             'mimetype': upload.mimetype or 'application/octet-stream',
         })
+        quoted, quoted_sender_name, quoted_preview = self._build_quoted_payload(reply_to_message_id)
         wa = self.sudo().send_message_media(res_id=False, res_model=False, phone_number=phone_number,
                                              attachment=attachment,
                                              # مسافة بدل فاضي عشان نمنع
@@ -237,7 +450,9 @@ class WaMessageFullView(models.Model):
                                              # النص التلقائي "[type] name"
                                              # (بيحصل بس لو caption falsy).
                                              caption=(caption.strip() if caption and caption.strip() else ' '),
-                                             post_to_channel=False)
+                                             post_to_channel=False,
+                                             quoted=quoted, quoted_sender_name=quoted_sender_name,
+                                             quoted_preview=quoted_preview)
         return self._fullview_message_dict(wa)
 
     # ------------------------------------------------------------------
